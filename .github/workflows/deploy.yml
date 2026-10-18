@@ -1,0 +1,95 @@
+name: Deploy Databricks bundle
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - test
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-dev:
+    if: ${{ vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/') }}
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: bundle-deploy-dev
+      cancel-in-progress: false
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Validate and deploy to dev
+        run: |
+          databricks bundle validate -t dev
+          databricks bundle deploy -t dev
+
+  deploy-test:
+    if: ${{ vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/test' }}
+    runs-on: ubuntu-latest
+    environment: test
+    concurrency:
+      group: bundle-deploy-test
+      cancel-in-progress: false
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Validate and deploy to test
+        run: |
+          databricks bundle validate -t test
+          databricks bundle deploy -t test
+
+  deploy-prod:
+    if: ${{ vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'test' }}
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: bundle-deploy-prod
+      cancel-in-progress: false
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+    steps:
+      - name: Check out the merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Validate and deploy to prod
+        run: |
+          databricks bundle validate -t prod
+          databricks bundle deploy -t prod

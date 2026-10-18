@@ -73,17 +73,17 @@ with this project. It's also possible to interact with it directly using the CLI
 the [setup job](resources/setup_environment.job.yml). Its
 [notebook](src/setup_environment.py) creates the following objects:
 
-| Object | Development | Production |
-| --- | --- | --- |
-| Bronze catalog | `dev_penny_lake_01_bronze` | `prod_penny_lake_01_bronze` |
-| Silver catalog | `dev_penny_lake_02_silver` | `prod_penny_lake_02_silver` |
-| Gold catalog | `dev_penny_lake_03_gold` | `prod_penny_lake_03_gold` |
-| Governance catalog | `dev_penny_lake_04_governance` | `prod_penny_lake_04_governance` |
-| Layer schema | `expenses` in each Bronze, Silver, and Gold catalog | `expenses` in each Bronze, Silver, and Gold catalog |
-| Governance schema | `governance` in the governance catalog | `governance` in the governance catalog |
-| Landing schema | `landing` in the bronze catalog | `landing` in the bronze catalog |
-| Managed Volume | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` |
-| Auto Loader state Volume | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` |
+| Object | Development | Test | Production |
+| --- | --- | --- | --- |
+| Bronze catalog | `dev_penny_lake_01_bronze` | `test_penny_lake_01_bronze` | `prod_penny_lake_01_bronze` |
+| Silver catalog | `dev_penny_lake_02_silver` | `test_penny_lake_02_silver` | `prod_penny_lake_02_silver` |
+| Gold catalog | `dev_penny_lake_03_gold` | `test_penny_lake_03_gold` | `prod_penny_lake_03_gold` |
+| Governance catalog | `dev_penny_lake_04_governance` | `test_penny_lake_04_governance` | `prod_penny_lake_04_governance` |
+| Layer schema | `expenses` in each Bronze, Silver, and Gold catalog | `expenses` in each Bronze, Silver, and Gold catalog | `expenses` in each Bronze, Silver, and Gold catalog |
+| Governance schema | `governance` in the governance catalog | `governance` in the governance catalog | `governance` in the governance catalog |
+| Landing schema | `landing` in the bronze catalog | `landing` in the bronze catalog | `landing` in the bronze catalog |
+| Managed Volume | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` |
+| Auto Loader state Volume | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` |
 
 The existing `catalog` variable is the bronze catalog. The
 [bronze ingestion job](src/bronze_ingest.py) uses Auto Loader with the schema
@@ -180,6 +180,54 @@ runs Bronze, Silver, Gold, and the governance publication task in dependency
 order. Its file-arrival trigger is active; it can also be started manually.
 Catalogs, schemas, Volumes, and their data are not bundle-managed resources:
 `bundle destroy` does not remove the objects created by the notebook.
+
+## Git branch deployment flow
+
+The intended promotion flow is:
+
+| GitHub event | Bundle target |
+| --- | --- |
+| Push to `feature/*` | `dev` |
+| Merge a pull request into `test` | `test` |
+| Merge a pull request from `test` into `main` | `prod` |
+
+The [CI workflow](.github/workflows/ci.yml) runs workspace-independent unit
+tests on pull requests to `test` and `main`. The
+[deployment workflow](.github/workflows/deploy.yml) uses Databricks GitHub OIDC
+authentication and deploys only on the events above. It additionally requires
+the repository Actions variable `DATABRICKS_DEPLOYMENTS_ENABLED` to equal
+`true`; it is intentionally not enabled until OIDC policies and service
+principal permissions are configured and verified.
+
+Configure GitHub Actions Environments named `dev`, `test`, and `prod`. In each
+environment set `DATABRICKS_HOST` to the workspace URL and `DATABRICKS_CLIENT_ID`
+to the matching Databricks application ID:
+
+| Environment | Service principal | Application ID |
+| --- | --- | --- |
+| `dev` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
+| `test` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
+| `prod` | `sp-dab-prod` | `76668225-6dad-4f36-bc24-e9b41f811953` |
+
+Create a Databricks service principal federation policy for each GitHub
+environment. Use issuer `https://token.actions.githubusercontent.com`, audience
+equal to the Databricks account ID (or its default), and the environment
+subject. Since this repository was created after GitHub's immutable subject
+format took effect, the expected subjects are:
+
+```text
+repo:alkztro-95@318067197/penny_lake@1424850622:environment:dev
+repo:alkztro-95@318067197/penny_lake@1424850622:environment:test
+repo:alkztro-95@318067197/penny_lake@1424850622:environment:prod
+```
+
+The dev principal must have the workspace and Unity Catalog privileges to
+deploy to the dev and test catalogs; the prod principal needs the corresponding
+privileges for production. Bootstrap each environment's catalogs, schemas, and
+Volumes with its `setup_environment` job before pipeline deployment. Do not set
+`DATABRICKS_DEPLOYMENTS_ENABLED=true` until those prerequisites and all three
+federation policies are verified. No Databricks client secret or personal
+access token is stored in GitHub.
 
 ### Test setup without a workspace connection
 
