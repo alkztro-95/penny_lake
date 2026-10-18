@@ -21,6 +21,8 @@ resources:
           default: ${var.transactions_volume}
         - name: autoloader_state_volume
           default: ${var.autoloader_state_volume}
+        - name: catalog_full_access_principal
+          default: ${var.catalog_full_access_principal}
 
       tasks:
         - task_key: setup_environment

@@ -226,9 +226,11 @@ FROM ${gold_catalog}.${schema}.gold_monthly_spending_reader
 LIMIT 5;
 ```
 
-Production governance is not deployed until the production target is bootstrapped
-and the CI/CD service principal has its OAuth M2M secret configured in GitHub
-and the required Unity Catalog grants.
+The same reader mapping, mask, and table-only grant are applied in dev, test,
+and prod when `expense_refresh` completes its Gold refresh and governance task.
+The test and prod bundle deployments bootstrap their catalogs first; an
+`expense_refresh` run with data is still required to create and populate the
+masked reader table in those targets.
 
 Retain source JSON files and the Auto Loader state Volume. Do not delete or
 recreate the checkpoint casually: it records which source files have already

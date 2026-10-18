@@ -63,19 +63,20 @@ class CicdConfigurationTests(unittest.TestCase):
         self.assertLess(test_job.index(bootstrap_job), test_job.index(run_setup))
         self.assertLess(test_job.index(run_setup), test_job.index(full_deploy))
 
-    def test_test_deployment_grants_access_only_to_test_catalogs(self):
+    def test_setup_and_reader_governance_permissions_are_environment_scoped(self):
         test_job = self.deploy.split("deploy-test:", 1)[1].split("deploy-prod:", 1)[0]
-        for catalog in (
-            "test_penny_lake_01_bronze",
-            "test_penny_lake_02_silver",
-            "test_penny_lake_03_gold",
-            "test_penny_lake_04_governance",
-        ):
-            with self.subTest(catalog=catalog):
-                self.assertIn(f"databricks grants update catalog {catalog}", test_job)
-        self.assertEqual(test_job.count('"ALL_PRIVILEGES"'), 4)
-        self.assertEqual(test_job.count("alfredo.castro@ulatina.net"), 4)
-        self.assertNotIn("databricks grants update catalog prod_", self.deploy)
+        self.assertNotIn("databricks grants update catalog", test_job)
+        self.assertIn("catalog_full_access_principal:", self.bundle)
+        self.assertEqual(
+            self.bundle.count("gold_reader_principal: alkztro@hotmail.com"),
+            3,
+        )
+        prod_job = self.deploy.split("deploy-prod:", 1)[1]
+        setup_job = "databricks bundle deploy -t prod --select jobs.setup_environment"
+        run_setup = "databricks bundle run setup_environment -t prod"
+        full_deploy = "databricks bundle deploy -t prod\n"
+        self.assertLess(prod_job.index(setup_job), prod_job.index(run_setup))
+        self.assertLess(prod_job.index(run_setup), prod_job.index(full_deploy))
 
 
 if __name__ == "__main__":
