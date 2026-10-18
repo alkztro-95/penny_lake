@@ -34,9 +34,11 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Validate and deploy to test
+      - name: Bootstrap and deploy to test
         run: |
           databricks bundle validate -t test
+          databricks bundle deploy -t test --select jobs.setup_environment
+          databricks bundle run setup_environment -t test
           databricks bundle deploy -t test
 
   deploy-prod:

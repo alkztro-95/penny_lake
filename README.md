@@ -213,8 +213,10 @@ Never add the secret to the repository, workflow files, or chat.
 
 The test principal must have the workspace and Unity Catalog privileges to
 deploy to the test catalogs; the prod principal needs the corresponding
-privileges for production. Bootstrap each environment's catalogs, schemas, and
-Volumes with its `setup_environment` job before pipeline deployment. Free
+privileges for production. The test deployment workflow first deploys and runs
+`setup_environment` to create the test catalogs, schemas, and Volumes, then
+deploys the pipelines. The principal therefore needs permission to create those
+catalogs and objects. Free
 Edition does not provide Account Console access or account-level APIs, so this
 workflow uses OAuth M2M secrets instead of GitHub OIDC federation policies.
 Then add the repository Actions variable
