@@ -63,6 +63,20 @@ class CicdConfigurationTests(unittest.TestCase):
         self.assertLess(test_job.index(bootstrap_job), test_job.index(run_setup))
         self.assertLess(test_job.index(run_setup), test_job.index(full_deploy))
 
+    def test_test_deployment_grants_access_only_to_test_catalogs(self):
+        test_job = self.deploy.split("deploy-test:", 1)[1].split("deploy-prod:", 1)[0]
+        for catalog in (
+            "test_penny_lake_01_bronze",
+            "test_penny_lake_02_silver",
+            "test_penny_lake_03_gold",
+            "test_penny_lake_04_governance",
+        ):
+            with self.subTest(catalog=catalog):
+                self.assertIn(f"databricks grants update catalog {catalog}", test_job)
+        self.assertEqual(test_job.count('"ALL_PRIVILEGES"'), 4)
+        self.assertEqual(test_job.count("alfredo.castro@ulatina.net"), 4)
+        self.assertNotIn("databricks grants update catalog prod_", self.deploy)
+
 
 if __name__ == "__main__":
     unittest.main()
