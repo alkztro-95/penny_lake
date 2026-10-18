@@ -3,7 +3,6 @@ name: Deploy Databricks bundle
 on:
   push:
     branches:
-      - "feature/**"
       - test
   pull_request:
     types: [closed]
@@ -11,35 +10,8 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  deploy-dev:
-    if: ${{ vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/') }}
-    runs-on: ubuntu-latest
-    environment: dev
-    concurrency:
-      group: bundle-deploy-dev
-      cancel-in-progress: false
-    env:
-      DATABRICKS_AUTH_TYPE: github-oidc
-      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Databricks CLI
-        uses: databricks/setup-cli@main
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: Validate and deploy to dev
-        run: |
-          databricks bundle validate -t dev
-          databricks bundle deploy -t dev
-
   deploy-test:
     if: ${{ vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/test' }}
     runs-on: ubuntu-latest
@@ -48,9 +20,10 @@ jobs:
       group: bundle-deploy-test
       cancel-in-progress: false
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -74,9 +47,10 @@ jobs:
       group: bundle-deploy-prod
       cancel-in-progress: false
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - name: Check out the merged commit
         uses: actions/checkout@v4

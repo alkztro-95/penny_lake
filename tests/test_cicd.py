@@ -33,21 +33,27 @@ class CicdConfigurationTests(unittest.TestCase):
         self.assertIn("pull_request:\n    branches: [test, main]", self.ci)
         self.assertIn("push:\n    branches: [test, main]", self.ci)
 
-    def test_deploy_flow_uses_feature_test_and_merged_test_to_main(self):
-        self.assertIn('"feature/**"', self.deploy)
+    def test_deploy_flow_uses_test_and_merged_test_to_main_only(self):
+        self.assertNotIn('"feature/**"', self.deploy)
+        self.assertNotIn("deploy-dev:", self.deploy)
         self.assertIn("github.ref == 'refs/heads/test'", self.deploy)
         self.assertIn("github.event.pull_request.head.ref == 'test'", self.deploy)
         self.assertIn("github.event.pull_request.base.ref == 'main'", self.deploy)
         self.assertIn("github.event.pull_request.merged == true", self.deploy)
         self.assertIn("github.event_name == 'pull_request'", self.deploy)
+        self.assertEqual(self.deploy.count("environment: "), 2)
 
-    def test_deployments_require_oidc_and_explicit_ready_flag(self):
-        self.assertEqual(self.deploy.count("DATABRICKS_AUTH_TYPE: github-oidc"), 3)
+    def test_deployments_use_oauth_m2m_and_explicit_ready_flag(self):
+        self.assertEqual(self.deploy.count("DATABRICKS_AUTH_TYPE: oauth-m2m"), 2)
+        self.assertEqual(
+            self.deploy.count("DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}"),
+            2,
+        )
         self.assertEqual(
             self.deploy.count("vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true'"),
-            3,
+            2,
         )
-        self.assertEqual(self.deploy.count("id-token: write"), 1)
+        self.assertNotIn("id-token: write", self.deploy)
 
 
 if __name__ == "__main__":

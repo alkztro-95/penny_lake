@@ -227,7 +227,8 @@ LIMIT 5;
 ```
 
 Production governance is not deployed until the production target is bootstrapped
-and the CI/CD identity has the required OIDC policy and Unity Catalog grants.
+and the CI/CD service principal has its OAuth M2M secret configured in GitHub
+and the required Unity Catalog grants.
 
 Retain source JSON files and the Auto Loader state Volume. Do not delete or
 recreate the checkpoint casually: it records which source files have already
