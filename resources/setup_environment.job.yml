@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    setup_environment:
+      name: penny_lake_setup_environment
+      max_concurrent_runs: 1
+
+      parameters:
+        - name: bronze_catalog
+          default: ${var.catalog}
+        - name: silver_catalog
+          default: ${var.silver_catalog}
+        - name: gold_catalog
+          default: ${var.gold_catalog}
+        - name: governance_catalog
+          default: ${var.governance_catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: landing_schema
+          default: ${var.landing_schema}
+        - name: transactions_volume
+          default: ${var.transactions_volume}
+        - name: autoloader_state_volume
+          default: ${var.autoloader_state_volume}
+
+      tasks:
+        - task_key: setup_environment
+          notebook_task:
+            notebook_path: ../src/setup_environment.py

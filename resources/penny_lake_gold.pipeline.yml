@@ -1,0 +1,14 @@
+resources:
+  pipelines:
+    penny_lake_gold:
+      name: penny_lake_gold
+      catalog: ${var.gold_catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      root_path: "../src/penny_lake_etl"
+      parameters:
+        silver_expenses_table: ${var.silver_catalog}.${var.schema}.silver_expenses
+      libraries:
+        - glob:
+            include: ../src/penny_lake_etl/transformations/gold_monthly_spending.sql

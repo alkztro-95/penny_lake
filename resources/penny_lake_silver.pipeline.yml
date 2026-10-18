@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    penny_lake_silver:
+      name: penny_lake_silver
+      catalog: ${var.silver_catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      root_path: "../src/penny_lake_etl"
+      parameters:
+        bronze_expenses_table: ${var.catalog}.${var.schema}.bronze_expenses_raw
+        usd_to_crc_rate: ${var.usd_to_crc_rate}
+      libraries:
+        - glob:
+            include: ../src/penny_lake_etl/transformations/silver_categories.sql
+        - glob:
+            include: ../src/penny_lake_etl/transformations/silver_expenses.sql
