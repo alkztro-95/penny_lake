@@ -187,47 +187,46 @@ The intended promotion flow is:
 
 | GitHub event | Bundle target |
 | --- | --- |
-| Push to `feature/*` | `dev` |
+| Manual deployment from the Databricks workspace Git folder | `dev` |
 | Merge a pull request into `test` | `test` |
 | Merge a pull request from `test` into `main` | `prod` |
 
 The [CI workflow](.github/workflows/ci.yml) runs workspace-independent unit
 tests on pull requests to `test` and `main`. The
-[deployment workflow](.github/workflows/deploy.yml) uses Databricks GitHub OIDC
-authentication and deploys only on the events above. It additionally requires
-the repository Actions variable `DATABRICKS_DEPLOYMENTS_ENABLED` to equal
-`true`; it is intentionally not enabled until OIDC policies and service
-principal permissions are configured and verified.
+[deployment workflow](.github/workflows/deploy.yml) uses Databricks OAuth
+machine-to-machine (M2M) authentication and deploys only to `test` and `prod`.
+It requires the repository Actions variable
+`DATABRICKS_DEPLOYMENTS_ENABLED` to equal `true`; keep it disabled until the
+GitHub environment credentials and service principal permissions are configured
+and verified.
 
-Configure GitHub Actions Environments named `dev`, `test`, and `prod`. In each
+Configure GitHub Actions Environments named `test` and `prod`. In each
 environment set `DATABRICKS_HOST` to the workspace URL and `DATABRICKS_CLIENT_ID`
-to the matching Databricks application ID:
+to the matching Databricks application ID. Add an environment secret named
+`DATABRICKS_CLIENT_SECRET` containing that service principal's OAuth secret.
+Never add the secret to the repository, workflow files, or chat.
 
 | Environment | Service principal | Application ID |
 | --- | --- | --- |
-| `dev` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `test` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `prod` | `sp-dab-prod` | `76668225-6dad-4f36-bc24-e9b41f811953` |
 
-Create a Databricks service principal federation policy for each GitHub
-environment. Use issuer `https://token.actions.githubusercontent.com`, audience
-equal to the Databricks account ID (or its default), and the environment
-subject. Since this repository was created after GitHub's immutable subject
-format took effect, the expected subjects are:
-
-```text
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:dev
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:test
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:prod
-```
-
-The dev principal must have the workspace and Unity Catalog privileges to
-deploy to the dev and test catalogs; the prod principal needs the corresponding
+The test principal must have the workspace and Unity Catalog privileges to
+deploy to the test catalogs; the prod principal needs the corresponding
 privileges for production. Bootstrap each environment's catalogs, schemas, and
-Volumes with its `setup_environment` job before pipeline deployment. Do not set
-`DATABRICKS_DEPLOYMENTS_ENABLED=true` until those prerequisites and all three
-federation policies are verified. No Databricks client secret or personal
-access token is stored in GitHub.
+Volumes with its `setup_environment` job before pipeline deployment. Free
+Edition does not provide Account Console access or account-level APIs, so this
+workflow uses OAuth M2M secrets instead of GitHub OIDC federation policies.
+Then add the repository Actions variable
+`DATABRICKS_DEPLOYMENTS_ENABLED=true` only after verifying each environment's
+secret, host, client ID, and required grants.
+
+To deploy `dev` manually in Databricks, sync the desired branch in the
+workspace Git folder, open its root `databricks.yml`, select the Deployments
+icon, choose the `dev` target, and deploy. The bundle UI executes the deployment
+as your current Databricks user, so that user needs the required workspace and
+Unity Catalog permissions. The `dev` target remains in `databricks.yml`, but
+does not require a GitHub Environment.
 
 ### Test setup without a workspace connection
 
