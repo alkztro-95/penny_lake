@@ -226,7 +226,8 @@ FROM ${gold_catalog}.${schema}.gold_monthly_spending_reader
 LIMIT 5;
 ```
 
-Do not deploy this access policy to production until it is explicitly approved.
+Production governance is not deployed until the production target is bootstrapped
+and the CI/CD identity has the required OIDC policy and Unity Catalog grants.
 
 Retain source JSON files and the Auto Loader state Volume. Do not delete or
 recreate the checkpoint casually: it records which source files have already

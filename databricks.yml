@@ -12,7 +12,7 @@ artifacts:
     type: whl
     build: uv build --wheel
 
-# Variable declarations. These variables are assigned in the dev/prod targets below.
+# Variable declarations. These variables are assigned in the targets below.
 variables:
   catalog:
     description: The bronze catalog and default pipeline catalog
@@ -56,12 +56,28 @@ targets:
       governance_catalog: dev_penny_lake_04_governance
       gold_reader_principal: alkztro@hotmail.com
       schema: expenses
+  test:
+    mode: production
+    workspace:
+      host: https://dbc-7c7fae20-e5c4.cloud.databricks.com
+      root_path: /Workspace/Users/cb2f526a-1a03-47da-a4f6-30729febe372/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: test_penny_lake_01_bronze
+      silver_catalog: test_penny_lake_02_silver
+      gold_catalog: test_penny_lake_03_gold
+      governance_catalog: test_penny_lake_04_governance
+      gold_reader_principal: alkztro@hotmail.com
+      schema: expenses
+    permissions:
+      - service_principal_name: cb2f526a-1a03-47da-a4f6-30729febe372
+        level: CAN_MANAGE
+      - user_name: alfredo.castro@ulatina.net
+        level: CAN_MANAGE
   prod:
     mode: production
     workspace:
       host: https://dbc-7c7fae20-e5c4.cloud.databricks.com
-      # We explicitly deploy to /Workspace/Users/alfredo.castro@ulatina.net to make sure we only have a single copy.
-      root_path: /Workspace/Users/alfredo.castro@ulatina.net/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Users/76668225-6dad-4f36-bc24-e9b41f811953/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: prod_penny_lake_01_bronze
       silver_catalog: prod_penny_lake_02_silver
@@ -70,5 +86,7 @@ targets:
       gold_reader_principal: alkztro@hotmail.com
       schema: expenses
     permissions:
+      - service_principal_name: 76668225-6dad-4f36-bc24-e9b41f811953
+        level: CAN_MANAGE
       - user_name: alfredo.castro@ulatina.net
         level: CAN_MANAGE

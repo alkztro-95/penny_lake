@@ -31,7 +31,7 @@ class SetupEnvironmentTests(unittest.TestCase):
         return output
 
     def test_creates_expected_objects_for_each_environment(self):
-        for environment in ("dev", "prod"):
+        for environment in ("dev", "test", "prod"):
             with self.subTest(environment=environment):
                 self.runtime.spark.reset_mock()
                 for layer, number in (
