@@ -215,8 +215,11 @@ The test principal must have the workspace and Unity Catalog privileges to
 deploy to the test catalogs; the prod principal needs the corresponding
 privileges for production. The test deployment workflow first deploys and runs
 `setup_environment` to create the test catalogs, schemas, and Volumes, then
-deploys the pipelines. The principal therefore needs permission to create those
-catalogs and objects. Free
+grants `ALL_PRIVILEGES` on those four test catalogs to
+`alfredo.castro@ulatina.net` before deploying the pipelines. This lets the
+workspace user inspect and operate the test data; no such grant is made in dev
+or prod. The principal therefore needs permission to create the catalogs and
+grant access to them. Free
 Edition does not provide Account Console access or account-level APIs, so this
 workflow uses OAuth M2M secrets instead of GitHub OIDC federation policies.
 Then add the repository Actions variable
