@@ -55,6 +55,14 @@ class CicdConfigurationTests(unittest.TestCase):
         )
         self.assertNotIn("id-token: write", self.deploy)
 
+    def test_test_deployment_bootstraps_catalogs_before_pipelines(self):
+        test_job = self.deploy.split("deploy-test:", 1)[1].split("deploy-prod:", 1)[0]
+        bootstrap_job = "databricks bundle deploy -t test --select jobs.setup_environment"
+        run_setup = "databricks bundle run setup_environment -t test"
+        full_deploy = "databricks bundle deploy -t test\n"
+        self.assertLess(test_job.index(bootstrap_job), test_job.index(run_setup))
+        self.assertLess(test_job.index(run_setup), test_job.index(full_deploy))
+
 
 if __name__ == "__main__":
     unittest.main()
