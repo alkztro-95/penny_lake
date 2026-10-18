@@ -71,7 +71,9 @@ with this project. It's also possible to interact with it directly using the CLI
 
 [databricks.yml](databricks.yml) supplies environment-specific catalog names to
 the [setup job](resources/setup_environment.job.yml). Its
-[notebook](src/setup_environment.py) creates the following objects:
+[notebook](src/setup_environment.py) creates the following objects and grants
+`ALL_PRIVILEGES` on each environment's four catalogs to
+`catalog_full_access_principal` (default `alfredo.castro@ulatina.net`):
 
 | Object | Development | Test | Production |
 | --- | --- | --- | --- |
@@ -113,17 +115,18 @@ bad row appears.
 
 The `expense_refresh` job publishes a Delta reader table after Gold refresh.
 Its `total_amount_crc` column uses a Unity Catalog column mask backed by
-`governance.gold_amount_access_map`; the configured reader
-(`alkztro@hotmail.com` in development) receives `NULL` for that column. The
+`${governance_catalog}.governance.gold_amount_access_map`; the configured
+reader (`alkztro@hotmail.com` in dev, test, and prod) receives `NULL` for that column. The
 unmasked materialized view remains ungranted to that reader. The reader also
 gets no Bronze, Silver, or mapping-table access. Access defaults to masked
 unless a principal is explicitly allowed by the mapping table. Sensitive
 monetary columns are tagged with `sensitivity = sensitive` and
 `domain = financial`.
 
-The current bundle configuration is intended to be deployed to development
-first. Do not deploy production governance or grant production access without
-explicit approval.
+The `apply_governance` task applies these reader grants after Gold refresh. In
+test and prod, the protected reader table and its grants are created when
+`expense_refresh` successfully processes data; deploying the bundle alone does
+not run that job.
 
 ### Requirements
 
@@ -211,17 +214,15 @@ Never add the secret to the repository, workflow files, or chat.
 | `test` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `prod` | `sp-dab-prod` | `76668225-6dad-4f36-bc24-e9b41f811953` |
 
-The test principal must have the workspace and Unity Catalog privileges to
-deploy to the test catalogs; the prod principal needs the corresponding
-privileges for production. The test deployment workflow first deploys and runs
-`setup_environment` to create the test catalogs, schemas, and Volumes, then
-grants `ALL_PRIVILEGES` on those four test catalogs to
-`alfredo.castro@ulatina.net` before deploying the pipelines. This lets the
-workspace user inspect and operate the test data; no such grant is made in dev
-or prod. The principal therefore needs permission to create the catalogs and
-grant access to them. Free
-Edition does not provide Account Console access or account-level APIs, so this
-workflow uses OAuth M2M secrets instead of GitHub OIDC federation policies.
+The `test` and `prod` deployment workflows deploy and run `setup_environment`
+before deploying pipelines. That job creates catalogs, schemas, and Volumes,
+then grants `ALL_PRIVILEGES` on those four catalogs to
+`catalog_full_access_principal`. The same grant is applied in `dev` when its
+setup job is run manually. The setup identity needs `CREATE_CATALOG` on the
+metastore and permission to grant access on the catalogs it creates:
+`sp-dab-dev` for `dev`/`test`, and `sp-dab-prod` for `prod`. Free Edition does
+not provide Account Console access or account-level APIs, so this workflow uses
+OAuth M2M secrets instead of GitHub OIDC federation policies.
 Then add the repository Actions variable
 `DATABRICKS_DEPLOYMENTS_ENABLED=true` only after verifying each environment's
 secret, host, client ID, and required grants.
@@ -230,8 +231,10 @@ To deploy `dev` manually in Databricks, sync the desired branch in the
 workspace Git folder, open its root `databricks.yml`, select the Deployments
 icon, choose the `dev` target, and deploy. The bundle UI executes the deployment
 as your current Databricks user, so that user needs the required workspace and
-Unity Catalog permissions. The `dev` target remains in `databricks.yml`, but
-does not require a GitHub Environment.
+Unity Catalog permissions. Then run `penny_lake_setup_environment` from the
+bundle resources or Workflows → Jobs to initialize catalogs and grants. The
+`dev` target remains in `databricks.yml`, but does not require a GitHub
+Environment.
 
 ### Test setup without a workspace connection
 

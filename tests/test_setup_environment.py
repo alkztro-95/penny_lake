@@ -19,6 +19,7 @@ class SetupEnvironmentTests(unittest.TestCase):
             "landing_schema": "landing",
             "transactions_volume": "transactions_volume",
             "autoloader_state_volume": "autoloader_state",
+            "catalog_full_access_principal": "alfredo.castro@ulatina.net",
         }
         self.runtime = ModuleType("databricks.sdk.runtime")
         self.runtime.dbutils = Mock()
@@ -47,6 +48,7 @@ class SetupEnvironmentTests(unittest.TestCase):
                     catalog = self.parameters[f"{layer}_catalog"]
                     expected.extend([
                         f"CREATE CATALOG IF NOT EXISTS `{catalog}`",
+                        f"GRANT ALL PRIVILEGES ON CATALOG `{catalog}` TO `alfredo.castro@ulatina.net`",
                         f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{'governance' if layer == 'governance' else 'expenses'}`",
                     ])
                 bronze = self.parameters["bronze_catalog"]
@@ -69,16 +71,32 @@ class SetupEnvironmentTests(unittest.TestCase):
         self.runtime.spark.reset_mock()
         self.run_notebook()
         self.assertEqual(self.runtime.spark.sql.call_args_list, first_run)
-        self.assertTrue(all("IF NOT EXISTS" in call.args[0] for call in first_run))
+        self.assertTrue(
+            all(
+                "IF NOT EXISTS" in call.args[0]
+                or call.args[0].startswith("GRANT ALL PRIVILEGES ON CATALOG")
+                for call in first_run
+            )
+        )
 
     def test_invalid_parameters_fail_before_creating_any_objects(self):
-        for name in self.parameters:
+        for name in self.parameters.keys() - {"catalog_full_access_principal"}:
             for value in ("", "invalid.name", "invalid/path", "catalog`; DROP CATALOG x", "a" * 256):
                 with self.subTest(name=name, value=value):
                     with patch.dict(self.parameters, {name: value}):
                         with self.assertRaisesRegex(ValueError, name):
                             self.run_notebook()
                     self.runtime.spark.sql.assert_not_called()
+
+    def test_invalid_catalog_access_principal_fails_before_creating_any_objects(self):
+        for principal in ("", "reader'; GRANT SELECT ON TABLE secret", "not-an-email"):
+            with (
+                self.subTest(principal=principal),
+                patch.dict(self.parameters, {"catalog_full_access_principal": principal}),
+                self.assertRaisesRegex(ValueError, "valid email principal"),
+            ):
+                self.run_notebook()
+            self.runtime.spark.sql.assert_not_called()
 
     def test_duplicate_catalogs_fail_before_creating_any_objects(self):
         self.parameters["silver_catalog"] = self.parameters["bronze_catalog"].upper()

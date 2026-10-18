@@ -39,10 +39,6 @@ jobs:
           databricks bundle validate -t test
           databricks bundle deploy -t test --select jobs.setup_environment
           databricks bundle run setup_environment -t test
-          databricks grants update catalog test_penny_lake_01_bronze --json '{"changes":[{"principal":"alfredo.castro@ulatina.net","add":["ALL_PRIVILEGES"]}]}'
-          databricks grants update catalog test_penny_lake_02_silver --json '{"changes":[{"principal":"alfredo.castro@ulatina.net","add":["ALL_PRIVILEGES"]}]}'
-          databricks grants update catalog test_penny_lake_03_gold --json '{"changes":[{"principal":"alfredo.castro@ulatina.net","add":["ALL_PRIVILEGES"]}]}'
-          databricks grants update catalog test_penny_lake_04_governance --json '{"changes":[{"principal":"alfredo.castro@ulatina.net","add":["ALL_PRIVILEGES"]}]}'
           databricks bundle deploy -t test
 
   deploy-prod:
@@ -69,7 +65,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Validate and deploy to prod
+      - name: Bootstrap and deploy to prod
         run: |
           databricks bundle validate -t prod
+          databricks bundle deploy -t prod --select jobs.setup_environment
+          databricks bundle run setup_environment -t prod
           databricks bundle deploy -t prod
