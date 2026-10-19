@@ -38,14 +38,14 @@ y agrega práctica, y conviene confirmarla con el docente.
 
 | Requisito | Implementación y evidencia |
 | --- | --- |
-| V1 · Bronze | Auto Loader incremental, `schemaLocation`, `source_file_path` e idempotencia por lote. La [captura 01](01.png) muestra dos exportes agrupados por archivo. |
-| V2 · Silver | Tipos normalizados, filas inválidas descartadas por expectativas de calidad, deduplicación SCD Type 1, unión de categorías y métricas antes/después en [src/silver_metrics.py](src/silver_metrics.py). La [captura 02](02.png) muestra una ejecución completada del pipeline Silver. |
-| C1 · Gold y calidad | Vista materializada de gasto mensual con tres expectativas de calidad. La salida literal del rechazo está en [src/penny_lake_etl/README.md](src/penny_lake_etl/README.md); la [captura 03](03.png) muestra el pipeline Gold completado. |
+| V1 · Bronze | Auto Loader incremental, `schemaLocation`, `source_file_path` e idempotencia por lote. La [captura 01](docs/evidencia/01.png) muestra dos exportes agrupados por archivo. |
+| V2 · Silver | Tipos normalizados, filas inválidas descartadas por expectativas de calidad, deduplicación SCD Type 1, unión de categorías y métricas antes/después en [src/silver_metrics.py](src/silver_metrics.py). La [captura 02](docs/evidencia/02.png) muestra una ejecución completada del pipeline Silver. |
+| C1 · Gold y calidad | Vista materializada de gasto mensual con tres expectativas de calidad. La salida literal del rechazo está en [src/penny_lake_etl/README.md](src/penny_lake_etl/README.md); la [captura 03](docs/evidencia/03.png) muestra el pipeline Gold completado. |
 | C2 · Orquestación | Tarea con Bronze, Silver, Gold y gobernanza; dependencias, reintentos y activador de llegada de archivos (File Arrival). [Una ejecución exitosa en producción](https://dbc-7c7fae20-e5c4.cloud.databricks.com/?o=7474656472211339#job/1005843869970972/run/434073181335631). |
 | C3 · Gobernanza | Column mask con tabla de mapeo, grants mínimos para el lector, `SHOW GRANTS` y tags sensibles; detalles en [la documentación de transformaciones](src/penny_lake_etl/README.md). |
-| C4 · CI/CD | Repositorio [público en GitHub](https://github.com/alkztro-95/penny_lake), solicitudes de cambios hacia `test` y `main`, integración continua y despliegue por bundle. La carpeta Git del espacio de trabajo se muestra desde Databricks; la [captura 06](06.png) muestra despliegues exitosos a producción. |
-| C5 · Observabilidad y optimización | Consulta a tablas del sistema y clustering de `silver_expenses`; la evidencia SQL está en [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql). La [captura 08](08.png) muestra su historial en Prod; ver el alcance más abajo. |
-| O2 · Segunda identidad | Validación ejecutada desde la segunda cuenta: mostrar `current_user()`, la tabla Gold protegida y los accesos que esa identidad no tiene. La [captura 09](09.png) muestra la identidad y el monto enmascarado. |
+| C4 · CI/CD | Repositorio [público en GitHub](https://github.com/alkztro-95/penny_lake), solicitudes de cambios hacia `test` y `main`, integración continua y despliegue por bundle. La carpeta Git del espacio de trabajo se muestra desde Databricks; la [captura 06](docs/evidencia/06.png) muestra despliegues exitosos a producción. |
+| C5 · Observabilidad y optimización | Consulta a tablas del sistema y clustering de `silver_expenses`; la evidencia SQL está en [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql). La [captura 08](docs/evidencia/08.png) muestra su historial en Prod; ver el alcance más abajo. |
+| O2 · Segunda identidad | Validación ejecutada desde la segunda cuenta: mostrar `current_user()`, la tabla Gold protegida y los accesos que esa identidad no tiene. La [captura 09](docs/evidencia/09.png) muestra la identidad y el monto enmascarado. |
 | O5 · Ingesta por tandas | Auto Loader en flujo continuo con `availableNow`; cada llegada de archivos inicia una ejecución acotada compatible con cómputo sin servidor. |
 
 ## Decisiones de diseño
@@ -60,7 +60,7 @@ y agrega práctica, y conviene confirmarla con el docente.
 - La ejecución del pipeline Gold en Prod produjo 93 filas y cumplió sus tres
   expectativas de calidad:
 
-  ![Pipeline Gold completado con sus expectativas de calidad en Prod](03.png)
+  ![Pipeline Gold completado con sus expectativas de calidad en Prod](docs/evidencia/03.png)
 - El lector secundario está mapeado con `can_view_amount = false`. El principal
   de acceso completo al catálogo está mapeado con `true` para que pueda ver el
   monto en la tabla protegida.
@@ -188,7 +188,7 @@ tabla protegida. Las columnas monetarias sensibles llevan las etiquetas
 La consulta desde `alkztro@hotmail.com` confirma que `current_user()` identifica
 esa cuenta y que el monto queda enmascarado:
 
-![Consulta de Gold desde la segunda identidad con el monto enmascarado](09.png)
+![Consulta de Gold desde la segunda identidad con el monto enmascarado](docs/evidencia/09.png)
 
 La tarea `apply_governance` aplica estos permisos después de actualizar Gold.
 En test y prod, la tabla protegida y sus permisos se crean cuando
@@ -319,7 +319,7 @@ el destino seleccionado (`dev`, `test` o `prod`). El destino `dev` permanece en
 
 La captura muestra los despliegues exitosos de los pull requests a producción:
 
-![Despliegues exitosos del entorno Prod en GitHub](06.png)
+![Despliegues exitosos del entorno Prod en GitHub](docs/evidencia/06.png)
 
 ### Probar la configuración sin conexión al espacio de trabajo
 
@@ -360,7 +360,7 @@ aplanadas; ambas contienen `source_file_path`. Agrupa
 `bronze_expense_exports` por `source_file_path` para mostrar que cada archivo
 de entrada se ingirió una sola vez.
 
-![Conteo de filas Bronze agrupado por archivo de origen en Prod](01.png)
+![Conteo de filas Bronze agrupado por archivo de origen en Prod](docs/evidencia/01.png)
 
 La tarea de actualización ejecuta Bronze y luego Silver. El
 [cuaderno de métricas](src/silver_metrics.py) contiene celdas de métricas antes
@@ -371,7 +371,7 @@ porque la tabla Bronze sin procesar solo admite anexados. Lee la
 [documentación del estado actual de Silver](src/penny_lake_etl/README.md#silver-current-state)
 antes de cargar exportaciones adicionales.
 
-![Ejecución completada del pipeline Silver en Prod](02.png)
+![Ejecución completada del pipeline Silver en Prod](docs/evidencia/02.png)
 
 Ejecuta las pruebas simuladas de Bronze y Silver sin cómputo remoto:
 
@@ -427,4 +427,4 @@ documenta la optimización de Silver administrada por la canalización y no afir
 que cumpla literalmente con el requisito de aplicar clustering y optimizar la
 tabla más grande.
 
-![Historial de silver_expenses en Prod con el evento CLUSTER BY](08.png)
+![Historial de silver_expenses en Prod con el evento CLUSTER BY](docs/evidencia/08.png)
