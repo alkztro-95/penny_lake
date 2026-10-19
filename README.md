@@ -231,8 +231,9 @@ To deploy `dev` manually in Databricks, sync the desired branch in the
 workspace Git folder, open its root `databricks.yml`, select the Deployments
 icon, choose the `dev` target, and deploy. The bundle UI executes the deployment
 as your current Databricks user, so that user needs the required workspace and
-Unity Catalog permissions. Then run `penny_lake_setup_environment` from the
-bundle resources or Workflows → Jobs to initialize catalogs and grants. The
+Unity Catalog permissions. Then run the bundle's `setup_environment` job from
+the bundle resources or Workflows → Jobs to initialize catalogs and grants. Job
+and pipeline names include the selected target (`dev`, `test`, or `prod`). The
 `dev` target remains in `databricks.yml`, but does not require a GitHub
 Environment.
 

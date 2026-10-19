@@ -78,6 +78,17 @@ class CicdConfigurationTests(unittest.TestCase):
         self.assertLess(prod_job.index(setup_job), prod_job.index(run_setup))
         self.assertLess(prod_job.index(run_setup), prod_job.index(full_deploy))
 
+    def test_databricks_resource_names_include_the_bundle_target(self):
+        for path, name in (
+            ("resources/setup_environment.job.yml", "penny_lake_setup_environment"),
+            ("resources/expense_refresh.job.yml", "penny_lake_expense_refresh"),
+            ("resources/penny_lake_silver.pipeline.yml", "penny_lake_silver"),
+            ("resources/penny_lake_gold.pipeline.yml", "penny_lake_gold"),
+        ):
+            with self.subTest(resource=path):
+                content = (PROJECT_ROOT / path).read_text()
+                self.assertIn(f"name: ${{bundle.target}}_{name}", content)
+
 
 if __name__ == "__main__":
     unittest.main()
