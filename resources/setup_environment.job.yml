@@ -1,7 +1,7 @@
 resources:
   jobs:
     setup_environment:
-      name: penny_lake_setup_environment
+      name: ${bundle.target}_penny_lake_setup_environment
       max_concurrent_runs: 1
 
       parameters:

@@ -1,7 +1,7 @@
 resources:
   pipelines:
     penny_lake_silver:
-      name: penny_lake_silver
+      name: ${bundle.target}_penny_lake_silver
       catalog: ${var.silver_catalog}
       schema: ${var.schema}
       serverless: true
