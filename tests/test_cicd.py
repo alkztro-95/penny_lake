@@ -10,6 +10,7 @@ class CicdConfigurationTests(unittest.TestCase):
         cls.bundle = (PROJECT_ROOT / "databricks.yml").read_text()
         cls.ci = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
         cls.deploy = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+        cls.observability = (PROJECT_ROOT / "05_observabilidad" / "C5_evidencia.sql").read_text()
 
     def test_bundle_has_separate_test_catalogs_and_service_principal_root(self):
         for catalog in (
@@ -88,6 +89,20 @@ class CicdConfigurationTests(unittest.TestCase):
             with self.subTest(resource=path):
                 content = (PROJECT_ROOT / path).read_text()
                 self.assertIn(f"name: ${{bundle.target}}_{name}", content)
+
+    def test_observability_query_finds_runs_for_all_bundle_targets(self):
+        self.assertIn("FROM system.lakeflow.jobs", self.observability)
+        self.assertIn("FROM system.lakeflow.job_run_timeline", self.observability)
+        self.assertIn("jobs.name RLIKE '(dev|test|prod)_penny_lake_expense_refresh$'", self.observability)
+        self.assertNotIn("311134548631586", self.observability)
+        self.assertNotIn("test_penny_lake_01_bronze", self.observability)
+
+    def test_clustering_evidence_uses_a_target_table_parameter(self):
+        self.assertIn("EXECUTE IMMEDIATE CONCAT('DESCRIBE DETAIL ', :silver_table)", self.observability)
+        self.assertIn(
+            "EXECUTE IMMEDIATE CONCAT('DESCRIBE HISTORY ', :silver_table, ' LIMIT 10')",
+            self.observability,
+        )
 
 
 if __name__ == "__main__":
