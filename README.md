@@ -171,7 +171,7 @@ la actualización falla.
 Después de actualizar Gold, la tarea `expense_refresh` publica una tabla Delta
 para lectores. La columna `total_amount_crc` usa una máscara de columna de
 Unity Catalog respaldada por
-``${governance_catalog}.governance.gold_amount_access_map`; el lector configurado
+`${governance_catalog}.governance.gold_amount_access_map`; el lector configurado
 (`alkztro@hotmail.com` en dev, test y prod) recibe `NULL` en esa columna. Ese
 lector no recibe permisos sobre la vista materializada sin máscara, ni acceso a
 Bronze, Silver o la tabla de mapeo. De forma predeterminada, los montos se
