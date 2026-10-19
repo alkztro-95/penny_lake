@@ -19,6 +19,8 @@ class SilverPipelineTests(unittest.TestCase):
         self.assertIn("CREATE OR REFRESH STREAMING TABLE _int_expenses_expectations", self.expenses_sql)
         self.assertIn("CREATE OR REFRESH STREAMING TABLE _int_expenses_enriched", self.expenses_sql)
         self.assertIn("CREATE OR REFRESH STREAMING TABLE silver_expenses", self.expenses_sql)
+        self.assertIn("CLUSTER BY (expense_date, spending_area)", self.expenses_sql)
+        self.assertIn("'pipelines.autoOptimize.managed' = 'true'", self.expenses_sql)
         self.assertIn("CREATE FLOW silver_expenses_scd1 AS", self.expenses_sql)
         self.assertIn("IDENTIFIER(:bronze_expenses_table)", self.categories_sql)
         self.assertIn("STREAM(IDENTIFIER(:bronze_expenses_table))", self.expenses_sql)

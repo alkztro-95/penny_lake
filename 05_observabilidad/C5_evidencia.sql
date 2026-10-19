@@ -1,33 +1,44 @@
--- C5: job-run observability for the test expense refresh.
--- Lakeflow system-table records can take up to an hour to appear.
+-- C5: observe expense-refresh runs for any deployed target.
+-- System-table records can take up to an hour to appear.
+WITH latest_jobs AS (
+  SELECT workspace_id, job_id, name
+  FROM system.lakeflow.jobs
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY workspace_id, job_id
+    ORDER BY change_time DESC
+  ) = 1
+),
+recent_runs AS (
+  SELECT
+    workspace_id,
+    job_id,
+    run_id,
+    MIN(period_start_time) AS started_at,
+    MAX(period_end_time) AS ended_at,
+    MAX_BY(result_state, period_end_time) AS result_state
+  FROM system.lakeflow.job_run_timeline
+  WHERE period_start_time >= CURRENT_TIMESTAMP() - INTERVAL 7 DAYS
+  GROUP BY workspace_id, job_id, run_id
+)
 SELECT
-  workspace_id,
-  job_id,
-  run_id,
-  period_start_time,
-  period_end_time,
-  result_state
-FROM system.lakeflow.job_run_timeline
-WHERE workspace_id = '7474656472211339'
-  AND job_id = '311134548631586'
-  AND period_start_time >= CURRENT_TIMESTAMP() - INTERVAL 7 DAYS
-ORDER BY period_start_time DESC
+  runs.workspace_id,
+  jobs.name AS job_name,
+  runs.job_id,
+  runs.run_id,
+  runs.started_at,
+  runs.ended_at,
+  runs.result_state
+FROM recent_runs AS runs
+JOIN latest_jobs AS jobs
+  ON runs.workspace_id = jobs.workspace_id
+  AND runs.job_id = jobs.job_id
+WHERE jobs.name RLIKE '(dev|test|prod)_penny_lake_expense_refresh$'
+ORDER BY runs.started_at DESC
 LIMIT 20;
 
--- At the time of measurement, this was the largest test Delta table by size:
--- bronze_expense_exports: 52,731 bytes; bronze_expenses_raw: 51,043 bytes;
--- silver_expenses: 35,218 bytes.
-DESCRIBE DETAIL test_penny_lake_01_bronze.expenses.bronze_expense_exports;
-
--- exportedAt supports time-based inspection of each source export.
-ALTER TABLE test_penny_lake_01_bronze.expenses.bronze_expense_exports
-CLUSTER BY (exportedAt);
-
--- FULL reclusters the existing files after changing clustering keys.
-OPTIMIZE test_penny_lake_01_bronze.expenses.bronze_expense_exports FULL;
-
--- Evidence: clusteringColumns should contain exportedAt.
-DESCRIBE DETAIL test_penny_lake_01_bronze.expenses.bronze_expense_exports;
-
--- Evidence: the latest operation should be OPTIMIZE.
-DESCRIBE HISTORY test_penny_lake_01_bronze.expenses.bronze_expense_exports LIMIT 10;
+-- The Silver SDP declares liquid clustering on silver_expenses. Set the
+-- silver_table SQL parameter to the fully qualified table for the target, e.g.
+-- prod_penny_lake_02_silver.expenses.silver_expenses, then inspect its layout
+-- and pipeline-managed optimization history.
+EXECUTE IMMEDIATE CONCAT('DESCRIBE DETAIL ', :silver_table);
+EXECUTE IMMEDIATE CONCAT('DESCRIBE HISTORY ', :silver_table, ' LIMIT 10');

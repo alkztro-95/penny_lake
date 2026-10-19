@@ -92,6 +92,17 @@ The existing `catalog` variable is the bronze catalog. The
 directory explicitly stored in the `autoloader_state` Volume, plus a separate
 checkpoint directory in that Volume. Run `setup_environment` to create the state
 Volume before the ingestion job.
+
+### Optional O5: batched streaming ingestion
+
+The Bronze path already covers O5 without a synthetic file-writer notebook:
+the `expense_refresh` job waits for files in the landing Volume, then
+`bronze_ingest.py` reads them with Auto Loader (`cloudFiles`) in streaming mode
+and uses `availableNow=True` to process the available batch and terminate. A
+later file arrival starts the next batch, which is compatible with serverless
+compute. The behavior is asserted in
+[`tests/test_bronze_ingest.py`](tests/test_bronze_ingest.py).
+
 Silver builds distinct AI-classified categories, then streams
 `bronze_expenses_raw` into `_int_expenses_expectations` to normalize fields,
 drop rows that fail the declared expectations, and calculate estimated CRC
@@ -289,17 +300,42 @@ python3 -m unittest discover -s tests -p 'test_*pipeline.py' -v
 
 ## C5: Observability and optimization
 
-The SQL evidence in [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql)
-queries `system.lakeflow.job_run_timeline` for the test expense-refresh job.
-System-table records can take up to an hour to appear.
+The target-independent system-table query in
+[05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql)
+finds expense-refresh runs for deployed bundle targets by joining
+`system.lakeflow.jobs` to `system.lakeflow.job_run_timeline`. System-table
+records can take up to an hour to appear.
 
-The same script records `DESCRIBE DETAIL` sizes and applies liquid clustering
-to the largest test Delta table measured at the time: Bronze
-`bronze_expense_exports`, clustered by `exportedAt`. Run its statements
-individually in Databricks SQL. `OPTIMIZE FULL` reclusters the existing files;
-the final `DESCRIBE DETAIL` and `DESCRIBE HISTORY` show the clustering columns
-and the `OPTIMIZE` operation. The dataset is small, so this demonstrates the
-configuration and evidence rather than a meaningful performance improvement.
+Liquid clustering is declared directly on the SDP-managed `silver_expenses`
+streaming table in
+[src/penny_lake_etl/transformations/silver_expenses.sql](src/penny_lake_etl/transformations/silver_expenses.sql),
+using `expense_date` and `spending_area`. The same table definition enables
+`pipelines.autoOptimize.managed`, so the owning pipeline schedules its table
+optimization rather than relying on a separate manual `OPTIMIZE` command. The
+pipeline writes this table to the catalog selected by the bundle target, so
+the declaration applies in test and prod. The C5 SQL file includes parameterized
+`DESCRIBE DETAIL` and `DESCRIBE HISTORY` evidence; set `silver_table` to the
+selected target's fully-qualified Silver table.
+
+The largest table measured across the whole test project was actually Bronze
+`bronze_expense_exports` (52,731 bytes), which is written by the separate Bronze
+ingestion Job rather than an SDP. Per your choice to keep optimization
+declarative in the existing pipeline, this change clusters `silver_expenses`
+instead; it does not claim that Silver was the largest table across the entire
+project. Moving Bronze ingestion into an SDP would be needed to apply the same
+declaration to that Bronze table.
+
+In test, the pre-optimization `DESCRIBE DETAIL` measured
+`bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for
+`bronze_expenses_raw` and 35,218 bytes for `silver_expenses`. After clustering
+and optimization, `DESCRIBE DETAIL` reported `clusteringColumns = ["exportedAt"]`,
+one file, and 30,528 bytes. `DESCRIBE HISTORY` recorded `CLUSTER BY` at version 5
+and `OPTIMIZE FULL` at version 6; the subsequent `OPTIMIZE` compacted three files
+into one. The Lakeflow query returned the test refresh run
+`546572501279640` with `SUCCEEDED`. The dataset is small, so this demonstrates
+the previous Bronze test operation and its evidence rather than a meaningful
+performance improvement. Production evidence for the declarative Silver
+clustering must be collected after the Prod SDP update.
 
 In the test workspace, the pre-optimization `DESCRIBE DETAIL` measured
 `bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for

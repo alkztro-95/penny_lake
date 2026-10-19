@@ -99,7 +99,9 @@ LEFT JOIN silver_categories AS category
   ON LOWER(TRIM(expense.primary_category)) = category.category_key;
 
 CREATE OR REFRESH STREAMING TABLE silver_expenses
-COMMENT 'Latest accepted expense version per expense_id (SCD Type 1).';
+CLUSTER BY (expense_date, spending_area)
+COMMENT 'Latest accepted expense version per expense_id (SCD Type 1).'
+TBLPROPERTIES ('pipelines.autoOptimize.managed' = 'true');
 
 CREATE FLOW silver_expenses_scd1 AS
 AUTO CDC INTO silver_expenses
