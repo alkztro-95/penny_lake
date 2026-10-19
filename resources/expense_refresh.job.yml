@@ -42,3 +42,4 @@ resources:
               governance_catalog: ${var.governance_catalog}
               schema: ${var.schema}
               gold_reader_principal: ${var.gold_reader_principal}
+              catalog_full_access_principal: ${var.catalog_full_access_principal}
