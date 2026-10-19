@@ -286,3 +286,26 @@ Run the bronze and silver mocked tests without remote compute:
 ```bash
 python3 -m unittest discover -s tests -p 'test_*pipeline.py' -v
 ```
+
+## C5: Observability and optimization
+
+The SQL evidence in [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql)
+queries `system.lakeflow.job_run_timeline` for the test expense-refresh job.
+System-table records can take up to an hour to appear.
+
+The same script records `DESCRIBE DETAIL` sizes and applies liquid clustering
+to the largest test Delta table measured at the time: Bronze
+`bronze_expense_exports`, clustered by `exportedAt`. Run its statements
+individually in Databricks SQL. `OPTIMIZE FULL` reclusters the existing files;
+the final `DESCRIBE DETAIL` and `DESCRIBE HISTORY` show the clustering columns
+and the `OPTIMIZE` operation. The dataset is small, so this demonstrates the
+configuration and evidence rather than a meaningful performance improvement.
+
+In the test workspace, the pre-optimization `DESCRIBE DETAIL` measured
+`bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for
+`bronze_expenses_raw` and 35,218 bytes for `silver_expenses`. After clustering
+and optimization, `DESCRIBE DETAIL` reported `clusteringColumns = ["exportedAt"]`,
+one file, and 30,528 bytes. `DESCRIBE HISTORY` recorded `CLUSTER BY` at version 5
+and `OPTIMIZE FULL` at version 6; the subsequent `OPTIMIZE` compacted three files
+into one. The Lakeflow query returned the test refresh run
+`546572501279640` with `SUCCEEDED`.
