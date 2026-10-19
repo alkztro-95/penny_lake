@@ -217,7 +217,11 @@ Silver schema, and governance mapping table. The mapping rows are `alkztro@hotma
 workspace owner: the protected table returned 93 groups with 0 non-null amounts
 for the reader, while the unmasked Gold object returned 93 groups with 93
 non-null amounts. The reader-principal mapping plus its effective grants were
-verified, but the reader's own interactive session was not impersonated.
+verified. The project owner reports that the secondary reader identity was also
+used for an interactive validation. For the O2 demonstration, show
+`current_user()`, the masked amount from the protected reader table, and denied
+reads to the unmasked Gold object and other restricted tables in that identity's
+workspace session; those interactive outputs are not stored in this repository.
 Column-tag metadata was verified in `information_schema.column_tags` for the
 Bronze raw amount, the three Silver amount columns, and both Gold amount
 columns (including the protected reader table).
