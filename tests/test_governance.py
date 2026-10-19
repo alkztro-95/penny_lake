@@ -18,6 +18,7 @@ class GovernanceNotebookTests(unittest.TestCase):
             "governance_catalog": "dev_penny_lake_04_governance",
             "schema": "expenses",
             "gold_reader_principal": "alkztro@hotmail.com",
+            "catalog_full_access_principal": "alfredo.castro@ulatina.net",
         }
         self.runtime = ModuleType("databricks.sdk.runtime")
         self.runtime.dbutils = Mock()
@@ -32,9 +33,14 @@ class GovernanceNotebookTests(unittest.TestCase):
         self.run_notebook()
         statements = [call.args[0] for call in self.runtime.spark.sql.call_args_list]
 
-        merge = next(statement for statement in statements if "MERGE INTO" in statement)
-        self.assertIn("LOWER('alkztro@hotmail.com')", merge)
-        self.assertIn("FALSE AS can_view_amount", merge)
+        merges = [statement for statement in statements if "MERGE INTO" in statement]
+        self.assertEqual(len(merges), 2)
+        reader_merge = next(statement for statement in merges if "alkztro@hotmail.com" in statement)
+        self.assertIn("FALSE AS can_view_amount", reader_merge)
+        owner_merge = next(
+            statement for statement in merges if "alfredo.castro@ulatina.net" in statement
+        )
+        self.assertIn("TRUE AS can_view_amount", owner_merge)
 
         function = next(statement for statement in statements if "CREATE OR REPLACE FUNCTION" in statement)
         self.assertIn("WHEN EXISTS", function)
@@ -64,10 +70,22 @@ class GovernanceNotebookTests(unittest.TestCase):
         self.assertTrue(any("sensitivity' = 'sensitive'" in statement for statement in statements))
 
     def test_invalid_principal_fails_before_any_sql_is_executed(self):
-        self.parameters["gold_reader_principal"] = "reader'; GRANT SELECT ON TABLE secret"
-        with self.assertRaisesRegex(ValueError, "valid email principal"):
-            self.run_notebook()
-        self.runtime.spark.sql.assert_not_called()
+        invalid_principals = (
+            ("gold_reader_principal", "reader'; GRANT SELECT ON TABLE secret"),
+            ("catalog_full_access_principal", "owner'; GRANT SELECT ON TABLE secret"),
+        )
+        for name, principal in invalid_principals:
+            with self.subTest(principal=name):
+                self.parameters[name] = principal
+                with self.assertRaisesRegex(ValueError, "valid email principal"):
+                    self.run_notebook()
+                self.runtime.spark.sql.assert_not_called()
+                self.runtime.spark.sql.reset_mock()
+                self.parameters[name] = (
+                    "alkztro@hotmail.com"
+                    if name == "gold_reader_principal"
+                    else "alfredo.castro@ulatina.net"
+                )
 
     def test_refresh_job_applies_governance_after_gold(self):
         job = JOB.read_text()
@@ -76,6 +94,10 @@ class GovernanceNotebookTests(unittest.TestCase):
         self.assertIn("task_key: refresh_gold", governance_task)
         self.assertIn("governance_catalog: ${var.governance_catalog}", governance_task)
         self.assertIn("gold_reader_principal: ${var.gold_reader_principal}", governance_task)
+        self.assertIn(
+            "catalog_full_access_principal: ${var.catalog_full_access_principal}",
+            governance_task,
+        )
 
 
 if __name__ == "__main__":
