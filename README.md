@@ -7,7 +7,7 @@ gasta cada mes por área de gasto y nivel de esencialidad?**
 ## Problema y datos
 
 Los datos son exportaciones JSON acumulativas generadas por una aplicación
-personal de gastos y cargadas por el usuario a un Volume de Unity Catalog. No
+personal de gastos y cargadas por el usuario a un volumen de Unity Catalog. No
 son datos de una empresa y los archivos fuente no se guardan en este repositorio.
 Los exportes pueden contener montos en USD o CRC; la conversión de USD a CRC es
 estimada con una tasa configurable.
@@ -16,15 +16,15 @@ estimada con una tasa configurable.
 
 ```mermaid
 flowchart LR
-  App["App personal de gastos<br/>exportaciones JSON"] --> Volume["Volume de Unity Catalog"]
-  Volume --> Job["Lakeflow Job<br/>File Arrival"]
+  App["Aplicación personal de gastos<br/>exportaciones JSON"] --> Volume["Volumen de Unity Catalog"]
+  Volume --> Job["Tarea de Lakeflow<br/>Llegada de archivos"]
   Job --> Bronze["Bronze<br/>Auto Loader availableNow<br/>exportes completos + gastos aplanados"]
   Bronze --> Categories["Silver<br/>categorías normalizadas con AI_CLASSIFY"]
-  Bronze --> Clean["Silver<br/>expectations + normalización"]
+  Bronze --> Clean["Silver<br/>expectativas de calidad + normalización"]
   Categories --> Clean
   Clean --> Current["Silver<br/>AUTO CDC · SCD Type 1"]
   Current --> Gold["Gold<br/>gasto mensual por área y esencialidad"]
-  Gold --> Reader["Tabla Gold protegida<br/>column mask"]
+  Gold --> Reader["Tabla Gold protegida<br/>máscara de columna"]
   Mapping["Tabla de mapeo<br/>de acceso financiero"] --> Reader
   Job --> SystemTables["Tablas del sistema<br/>auditoría de corridas"]
 ```
@@ -39,14 +39,14 @@ y agrega práctica, y conviene confirmarla con el docente.
 | Requisito | Implementación y evidencia |
 | --- | --- |
 | V1 · Bronze | Auto Loader incremental, `schemaLocation`, `source_file_path` e idempotencia por lote. Mostrar en la UI los conteos de dos exportes, agrupados por archivo. |
-| V2 · Silver | Tipos normalizados, filas inválidas descartadas por expectations, deduplicación SCD Type 1, join de categorías y métricas antes/después en [src/silver_metrics.py](src/silver_metrics.py). |
-| C1 · Gold y calidad | Vista materializada de gasto mensual con tres expectations. La salida literal del rechazo está en [src/penny_lake_etl/README.md](src/penny_lake_etl/README.md). |
-| C2 · Orquestación | Job con Bronze, Silver, Gold y gobernanza; dependencias, reintentos y trigger File Arrival. [Una corrida exitosa en Prod](https://dbc-7c7fae20-e5c4.cloud.databricks.com/?o=7474656472211339#job/1005843869970972/run/434073181335631). |
+| V2 · Silver | Tipos normalizados, filas inválidas descartadas por expectativas de calidad, deduplicación SCD Type 1, unión de categorías y métricas antes/después en [src/silver_metrics.py](src/silver_metrics.py). |
+| C1 · Gold y calidad | Vista materializada de gasto mensual con tres expectativas de calidad. La salida literal del rechazo está en [src/penny_lake_etl/README.md](src/penny_lake_etl/README.md). |
+| C2 · Orquestación | Tarea con Bronze, Silver, Gold y gobernanza; dependencias, reintentos y activador de llegada de archivos (File Arrival). [Una ejecución exitosa en producción](https://dbc-7c7fae20-e5c4.cloud.databricks.com/?o=7474656472211339#job/1005843869970972/run/434073181335631). |
 | C3 · Gobernanza | Column mask con tabla de mapeo, grants mínimos para el lector, `SHOW GRANTS` y tags sensibles; detalles en [la documentación de transformaciones](src/penny_lake_etl/README.md). |
-| C4 · CI/CD | Repositorio [público en GitHub](https://github.com/alkztro-95/penny_lake), PRs a `test` y `main`, CI y despliegue por Bundle. El workspace Git folder se muestra desde Databricks. |
+| C4 · CI/CD | Repositorio [público en GitHub](https://github.com/alkztro-95/penny_lake), solicitudes de cambios hacia `test` y `main`, integración continua y despliegue por bundle. La carpeta Git del espacio de trabajo se muestra desde Databricks. |
 | C5 · Observabilidad y optimización | Consulta a tablas del sistema y clustering de `silver_expenses`; la evidencia SQL está en [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql). Ver la decisión y su alcance más abajo. |
 | O2 · Segunda identidad | Validación ejecutada desde la segunda cuenta: mostrar `current_user()`, la tabla Gold protegida y los accesos que esa identidad no tiene. |
-| O5 · Ingesta por tandas | Auto Loader en streaming con `availableNow`; cada llegada de archivos dispara una corrida acotada compatible con serverless. |
+| O5 · Ingesta por tandas | Auto Loader en flujo continuo con `availableNow`; cada llegada de archivos inicia una ejecución acotada compatible con cómputo sin servidor. |
 
 ## Decisiones de diseño
 
@@ -62,10 +62,11 @@ y agrega práctica, y conviene confirmarla con el docente.
   monto en la tabla protegida.
 - La tasa USD→CRC es una estimación, no una tasa histórica. El valor por defecto
   es 500 CRC/USD.
-- Para C5 se eligió `silver_expenses`, administrada por el pipeline declarativo,
-  con `CLUSTER BY (expense_date, spending_area)` y optimización administrada por
-  el pipeline. En Prod, `DESCRIBE DETAIL` y `DESCRIBE HISTORY` confirman esa
-  configuración y el evento `CLUSTER BY`. Las tablas Bronze medidas en Prod
+- Para C5 se eligió `silver_expenses`, administrada por la canalización
+  declarativa, con `CLUSTER BY (expense_date, spending_area)` y optimización
+  administrada por la canalización. En producción, `DESCRIBE DETAIL` y
+  `DESCRIBE HISTORY` confirman esa configuración y el evento `CLUSTER BY`.
+  Las tablas Bronze medidas en producción
   son mayores (`bronze_expense_exports`: 47.926 bytes;
   `bronze_expenses_raw`: 46.734 bytes; Silver: 33.164 bytes). Por eso, esta
   decisión no afirma que Silver sea la tabla más grande ni que exista una
@@ -73,7 +74,7 @@ y agrega práctica, y conviene confirmarla con el docente.
 
 ## Cómo ejecutarlo
 
-Requisitos locales: Databricks CLI, `uv` y acceso al workspace. Instala las
+Requisitos locales: Databricks CLI, `uv` y acceso al espacio de trabajo. Instala las
 dependencias y autentícate:
 
 ```bash
@@ -81,7 +82,7 @@ uv sync --dev
 databricks auth login --host https://dbc-7c7fae20-e5c4.cloud.databricks.com
 ```
 
-Para `dev`, inicializa el entorno y despliega el Bundle:
+Para `dev`, inicializa el entorno y despliega el bundle:
 
 ```bash
 databricks bundle validate -t dev
@@ -90,10 +91,11 @@ databricks bundle run setup_environment -t dev
 databricks bundle deploy -t dev
 ```
 
-Después carga un JSON nuevo en el Volume
-`/Volumes/<bronze_catalog>/landing/transactions_volume/`. El trigger File Arrival
-ejecuta el flujo Bronze → Silver → Gold → gobernanza. `test` y `prod` se
-promueven mediante pull requests y GitHub Actions; las credenciales se guardan
+Después carga un JSON nuevo en el volumen
+`/Volumes/<bronze_catalog>/landing/transactions_volume/`. El activador de llegada
+de archivos (File Arrival) ejecuta el flujo Bronze → Silver → Gold → gobernanza.
+`test` y `prod` se
+promueven mediante solicitudes de cambios y GitHub Actions; las credenciales se guardan
 en GitHub Environments, nunca en el repositorio.
 
 Las pruebas locales se ejecutan con:
@@ -109,277 +111,301 @@ evidencia y las instrucciones de gobernanza están en
 
 ## Configuración del entorno
 
-[databricks.yml](databricks.yml) supplies environment-specific catalog names to
-the [setup job](resources/setup_environment.job.yml). Its
-[notebook](src/setup_environment.py) creates the following objects and grants
-`ALL_PRIVILEGES` on each environment's four catalogs to
-`catalog_full_access_principal` (default `alfredo.castro@ulatina.net`):
+[databricks.yml](databricks.yml) proporciona los nombres de catálogo de cada
+entorno a la [tarea de configuración](resources/setup_environment.job.yml). Su
+[cuaderno](src/setup_environment.py) crea los siguientes objetos y concede
+`ALL_PRIVILEGES` en los cuatro catálogos de cada entorno a
+`catalog_full_access_principal` (por defecto, `alfredo.castro@ulatina.net`):
 
-| Object | Development | Test | Production |
+| Objeto | Desarrollo | Pruebas | Producción |
 | --- | --- | --- | --- |
-| Bronze catalog | `dev_penny_lake_01_bronze` | `test_penny_lake_01_bronze` | `prod_penny_lake_01_bronze` |
-| Silver catalog | `dev_penny_lake_02_silver` | `test_penny_lake_02_silver` | `prod_penny_lake_02_silver` |
-| Gold catalog | `dev_penny_lake_03_gold` | `test_penny_lake_03_gold` | `prod_penny_lake_03_gold` |
-| Governance catalog | `dev_penny_lake_04_governance` | `test_penny_lake_04_governance` | `prod_penny_lake_04_governance` |
-| Layer schema | `expenses` in each Bronze, Silver, and Gold catalog | `expenses` in each Bronze, Silver, and Gold catalog | `expenses` in each Bronze, Silver, and Gold catalog |
-| Governance schema | `governance` in the governance catalog | `governance` in the governance catalog | `governance` in the governance catalog |
-| Landing schema | `landing` in the bronze catalog | `landing` in the bronze catalog | `landing` in the bronze catalog |
-| Managed Volume | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` |
-| Auto Loader state Volume | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` |
+| Catálogo Bronze | `dev_penny_lake_01_bronze` | `test_penny_lake_01_bronze` | `prod_penny_lake_01_bronze` |
+| Catálogo Silver | `dev_penny_lake_02_silver` | `test_penny_lake_02_silver` | `prod_penny_lake_02_silver` |
+| Catálogo Gold | `dev_penny_lake_03_gold` | `test_penny_lake_03_gold` | `prod_penny_lake_03_gold` |
+| Catálogo de gobernanza | `dev_penny_lake_04_governance` | `test_penny_lake_04_governance` | `prod_penny_lake_04_governance` |
+| Esquema de capas | `expenses` en cada catálogo Bronze, Silver y Gold | `expenses` en cada catálogo Bronze, Silver y Gold | `expenses` en cada catálogo Bronze, Silver y Gold |
+| Esquema de gobernanza | `governance` en el catálogo de gobernanza | `governance` en el catálogo de gobernanza | `governance` en el catálogo de gobernanza |
+| Esquema de llegada | `landing` en el catálogo Bronze | `landing` en el catálogo Bronze | `landing` en el catálogo Bronze |
+| Volumen administrado | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` | Bronze `landing.transactions_volume` |
+| Volumen de estado de Auto Loader | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` | Bronze `landing.autoloader_state` |
 
-The existing `catalog` variable is the bronze catalog. The
-[bronze ingestion job](src/bronze_ingest.py) uses Auto Loader with the schema
-directory explicitly stored in the `autoloader_state` Volume, plus a separate
-checkpoint directory in that Volume. Run `setup_environment` to create the state
-Volume before the ingestion job.
+La variable `catalog` existente corresponde al catálogo Bronze. La
+[tarea de ingesta Bronze](src/bronze_ingest.py) usa Auto Loader y guarda
+explícitamente el directorio de esquema en el volumen `autoloader_state`, junto
+con un directorio separado para los puntos de control. Ejecuta
+`setup_environment` para crear ese volumen antes de la tarea de ingesta.
 
-### Optional O5: batched streaming ingestion
+### Opcional O5: ingesta por tandas en flujo continuo
 
-The Bronze path already covers O5 without a synthetic file-writer notebook:
-the `expense_refresh` job waits for files in the landing Volume, then
-`bronze_ingest.py` reads them with Auto Loader (`cloudFiles`) in streaming mode
-and uses `availableNow=True` to process the available batch and terminate. A
-later file arrival starts the next batch, which is compatible with serverless
-compute. The behavior is asserted in
+La ruta Bronze ya cubre O5 sin un cuaderno que genere archivos de prueba:
+la tarea `expense_refresh` espera archivos en el volumen de llegada y luego
+`bronze_ingest.py` los lee con Auto Loader (`cloudFiles`) en flujo continuo.
+Usa `availableNow=True` para procesar el lote disponible y finalizar. La llegada
+de un archivo posterior inicia el siguiente lote, compatible con el cómputo
+cómputo sin servidor. Este comportamiento se verifica en
 [`tests/test_bronze_ingest.py`](tests/test_bronze_ingest.py).
 
-Silver builds distinct AI-classified categories, then streams
-`bronze_expenses_raw` into `_int_expenses_expectations` to normalize fields,
-drop rows that fail the declared expectations, and calculate estimated CRC
-amounts. A second streaming table enriches accepted rows with category labels.
-`silver_expenses` uses AUTO CDC SCD Type 1 keyed by `expense_id`, ordered by
-`exported_at`; it keeps the latest accepted version seen for each ID, without
-retaining change history. Source file and ingestion metadata stay in Bronze.
-Because Bronze raw is append-only and does not emit deletes, expense IDs absent
-from later exports remain in Silver; an empty export does not clear Silver.
-USD conversion uses the `usd_to_crc_rate` bundle variable (default 500 CRC/USD).
-Original amounts and the applied rate are retained. A full refresh is required
-to recompute existing amounts after changing the rate.
+Silver genera categorías distintas clasificadas con IA y luego procesa
+`bronze_expenses_raw` en flujo continuo hacia `_int_expenses_expectations` para
+normalizar campos, descartar filas que no cumplen las reglas de calidad declaradas
+y calcular montos estimados en CRC. Una segunda tabla de flujo continuo enriquece
+las filas aceptadas con las etiquetas de categoría. `silver_expenses` usa
+AUTO CDC con SCD Type 1, clave `expense_id` y orden `exported_at`; conserva la
+última versión aceptada de cada identificador, sin historial de cambios. Los
+metadatos del archivo de origen y de la ingesta se conservan en Bronze. Como la
+tabla Bronze sin procesar es de solo anexado y no genera eliminaciones, los
+identificadores de gastos ausentes en exportaciones posteriores permanecen en
+Silver; una exportación vacía no borra Silver. La conversión de USD usa la
+variable del bundle `usd_to_crc_rate` (por defecto, 500 CRC/USD). Se conservan
+los montos originales y la tasa aplicada. Para recalcular montos existentes
+después de cambiar la tasa, se requiere una actualización completa.
 
-Gold contains the `gold_monthly_spending` materialized view, which answers:
-"How much are we spending in estimated CRC each month, by spending area and
-essentiality?" It includes transaction counts and enforces valid month, area,
-and essentiality labels with pipeline expectations that fail an update if a
-bad row appears.
+Gold contiene la vista materializada `gold_monthly_spending`, que responde:
+«¿Cuánto gastamos cada mes, en CRC estimados, por área de gasto y esencialidad?».
+Incluye el conteo de transacciones y valida las etiquetas de mes, área y
+esencialidad mediante reglas de calidad de la canalización; si aparece una fila inválida,
+la actualización falla.
 
-### Gold reader governance
+### Gobernanza de la tabla lectora Gold
 
-The `expense_refresh` job publishes a Delta reader table after Gold refresh.
-Its `total_amount_crc` column uses a Unity Catalog column mask backed by
-`${governance_catalog}.governance.gold_amount_access_map`; the configured
-reader (`alkztro@hotmail.com` in dev, test, and prod) receives `NULL` for that column. The
-unmasked materialized view remains ungranted to that reader. The reader also
-gets no Bronze, Silver, or mapping-table access. Access defaults to masked
-unless a principal is explicitly allowed by the mapping table. The configured
-`catalog_full_access_principal` (`alfredo.castro@ulatina.net` by default) is
-explicitly mapped with `can_view_amount = true`, so it sees the amount in the
-protected reader table. Sensitive monetary columns are tagged with
-`sensitivity = sensitive` and `domain = financial`.
+Después de actualizar Gold, la tarea `expense_refresh` publica una tabla Delta
+para lectores. La columna `total_amount_crc` usa una máscara de columna de
+Unity Catalog respaldada por
+``${governance_catalog}.governance.gold_amount_access_map`; el lector configurado
+(`alkztro@hotmail.com` en dev, test y prod) recibe `NULL` en esa columna. Ese
+lector no recibe permisos sobre la vista materializada sin máscara, ni acceso a
+Bronze, Silver o la tabla de mapeo. De forma predeterminada, los montos se
+enmascaran, salvo que la tabla de mapeo autorice explícitamente a un principal.
+`catalog_full_access_principal` (`alfredo.castro@ulatina.net` por defecto) está
+autorizado con `can_view_amount = true`, por lo que puede ver el monto en la
+tabla protegida. Las columnas monetarias sensibles llevan las etiquetas
+`sensitivity = sensitive` y `domain = financial`.
 
-The `apply_governance` task applies these reader grants after Gold refresh. In
-test and prod, the protected reader table and its grants are created when
-`expense_refresh` successfully processes data; deploying the bundle alone does
-not run that job.
+La tarea `apply_governance` aplica estos permisos después de actualizar Gold.
+En test y prod, la tabla protegida y sus permisos se crean cuando
+`expense_refresh` procesa datos correctamente; desplegar el bundle por sí solo
+no ejecuta esa tarea.
 
-### Requirements
+### Requisitos
 
-- Unity Catalog and serverless notebook jobs must be available in the workspace.
-- The setup job's run identity needs `CREATE CATALOG` on the metastore. For existing
-  catalogs/schemas it also needs the relevant `USE CATALOG`, `USE SCHEMA`,
-  `CREATE SCHEMA`, and `CREATE VOLUME` privileges.
-- Managed storage must be configured so new catalogs can inherit a managed
-  location. If the metastore has no managed storage root, an administrator must
-  configure storage or the notebook must be extended with explicit per-catalog
-  `MANAGED LOCATION` values and the corresponding storage privileges.
-- Object-name parameters accept letters, digits, and underscores, starting with
-  a letter or underscore, up to 255 characters.
-- The full bundle builds a Python wheel using `uv`; install `uv` before deploying.
+- El espacio de trabajo debe tener Unity Catalog y tareas de cuadernos con
+  cómputo sin servidor disponibles.
+- La identidad de ejecución de la tarea de configuración necesita `CREATE CATALOG`
+  en el metastore. Para catálogos o esquemas existentes también necesita los
+  permisos pertinentes: `USE CATALOG`, `USE SCHEMA`, `CREATE SCHEMA` y
+  `CREATE VOLUME`.
+- El almacenamiento administrado debe estar configurado para que los catálogos
+  nuevos hereden una ubicación administrada. Si el metastore no tiene una raíz
+  de almacenamiento administrado, un administrador debe configurar el
+  almacenamiento o ampliar el cuaderno con valores `MANAGED LOCATION`
+  explícitos por catálogo y los permisos de almacenamiento correspondientes.
+- Los parámetros de nombres de objetos aceptan letras, números y guiones bajos;
+  deben comenzar con una letra o un guion bajo y pueden tener hasta 255 caracteres.
+- El bundle completo compila un paquete wheel de Python con `uv`; instala `uv`
+  antes del despliegue.
 
-### Deploy, then run setup
+### Desplegar y luego ejecutar la configuración
 
-Run these commands from the project root. On a new environment, selectively
-deploy the setup job first so pipeline deployment does not depend on catalogs
-that have not yet been created. Selective deployment requires a CLI version
-supporting `bundle deploy --select` (the installed v1.11.0 supports it).
+Ejecuta estos comandos desde la raíz del proyecto. En un entorno nuevo,
+despliega primero solo la tarea de configuración para que el despliegue de la
+canalización no dependa de catálogos que aún no existen. El despliegue selectivo
+requiere una versión de CLI compatible con `bundle deploy --select` (la versión
+instalada, v1.11.0, lo admite).
 
 ```bash
-# Development
+# Desarrollo
 databricks bundle validate -t dev
 databricks bundle deploy -t dev --select jobs.setup_environment
 databricks bundle run setup_environment -t dev
 databricks bundle deploy -t dev
 
-# Production: run separately when ready
+# Producción: ejecutar por separado cuando corresponda
 databricks bundle validate -t prod
 databricks bundle deploy -t prod --select jobs.setup_environment
 databricks bundle run setup_environment -t prod
 databricks bundle deploy -t prod
 ```
 
-Each target deploys its own setup job. It has no schedule; run it explicitly.
-The job parameters are automatically passed to the notebook's widgets.
-Every creation uses `IF NOT EXISTS`: reruns do not replace objects or delete
-data, and a failed partial setup can be retried. Permission and storage errors
-fail the job rather than being suppressed. Existing objects' ownership,
-permissions, storage locations, and types are not reconciled by this notebook.
-Grants to other pipeline or BI identities are not created automatically.
+Cada destino despliega su propia tarea de configuración. No tiene una
+programación; ejecútala explícitamente. Sus parámetros se pasan
+automáticamente a los widgets del cuaderno. Todas las creaciones usan
+`IF NOT EXISTS`: repetir la ejecución no reemplaza objetos ni elimina datos, y
+se puede reintentar una configuración parcial fallida. Los errores de permisos
+y almacenamiento hacen que la tarea falle; no se ocultan. Este cuaderno no
+reconcilia la propiedad, los permisos, las ubicaciones de almacenamiento ni los
+tipos de los objetos existentes. Los permisos para otras identidades de
+pipelines o de BI no se crean automáticamente.
 
-After setup, upload JSON files to:
+Después de la configuración, carga archivos JSON en:
 
 ```text
 /Volumes/dev_penny_lake_01_bronze/landing/transactions_volume/
 /Volumes/prod_penny_lake_01_bronze/landing/transactions_volume/
 ```
 
-Deployment alone does not run setup or upload files. The expense refresh job
-runs Bronze, Silver, Gold, and the governance publication task in dependency
-order. Its file-arrival trigger is active; it can also be started manually.
-Catalogs, schemas, Volumes, and their data are not bundle-managed resources:
-`bundle destroy` does not remove the objects created by the notebook.
+El despliegue por sí solo no ejecuta la configuración ni carga archivos. La tarea
+de actualización de gastos ejecuta Bronze, Silver, Gold y la publicación de
+gobernanza en el orden de sus dependencias. El activador de llegada de archivos
+está activo; la tarea también se puede iniciar manualmente. Los
+catálogos, esquemas, volúmenes y sus datos no son recursos administrados por el
+bundle: `bundle destroy` no elimina los objetos creados por el cuaderno.
 
-## Git branch deployment flow
+## Flujo de despliegue por ramas de Git
 
-The intended promotion flow is:
+El flujo previsto de promoción es:
 
-| GitHub event | Bundle target |
+| Evento de GitHub | Destino del bundle |
 | --- | --- |
-| Manual deployment from the Databricks workspace Git folder | `dev` |
-| Merge a pull request into `test` | `test` |
-| Merge a pull request from `test` into `main` | `prod` |
+| Despliegue manual desde la carpeta Git del espacio de trabajo de Databricks | `dev` |
+| Integración de una solicitud de cambios en `test` | `test` |
+| Integración de una solicitud de cambios de `test` en `main` | `prod` |
 
-The [CI workflow](.github/workflows/ci.yml) runs workspace-independent unit
-tests on pull requests to `test` and `main`. The
-[deployment workflow](.github/workflows/deploy.yml) uses Databricks OAuth
-machine-to-machine (M2M) authentication and deploys only to `test` and `prod`.
-It requires the repository Actions variable
-`DATABRICKS_DEPLOYMENTS_ENABLED` to equal `true`; keep it disabled until the
-GitHub environment credentials and service principal permissions are configured
-and verified.
+El [flujo de integración continua](.github/workflows/ci.yml) ejecuta pruebas
+unitarias que no dependen del espacio de trabajo en solicitudes de cambios hacia
+`test` y `main`. El
+[flujo de despliegue](.github/workflows/deploy.yml) usa autenticación OAuth de
+Databricks entre máquinas (M2M) y despliega únicamente en `test` y `prod`.
+Requiere que la variable de Actions del repositorio
+`DATABRICKS_DEPLOYMENTS_ENABLED` tenga el valor `true`; mantenla desactivada
+hasta configurar y verificar las credenciales de los entornos de GitHub y los
+permisos de las entidades de servicio.
 
-Configure GitHub Actions Environments named `test` and `prod`. In each
-environment set `DATABRICKS_HOST` to the workspace URL and `DATABRICKS_CLIENT_ID`
-to the matching Databricks application ID. Add an environment secret named
-`DATABRICKS_CLIENT_SECRET` containing that service principal's OAuth secret.
-Never add the secret to the repository, workflow files, or chat.
+Configura en GitHub Actions los entornos `test` y `prod`. En cada entorno,
+establece `DATABRICKS_HOST` con la URL del espacio de trabajo y `DATABRICKS_CLIENT_ID`
+con el ID de la aplicación de Databricks correspondiente. Agrega en cada
+entorno un secreto llamado `DATABRICKS_CLIENT_SECRET` con el secreto OAuth de
+esa entidad de servicio. Nunca agregues ese secreto al repositorio, a los
+archivos de flujo de trabajo ni al chat.
 
-| Environment | Service principal | Application ID |
+| Entorno | Entidad de servicio | ID de aplicación |
 | --- | --- | --- |
 | `test` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `prod` | `sp-dab-prod` | `76668225-6dad-4f36-bc24-e9b41f811953` |
 
-The `test` and `prod` deployment workflows deploy and run `setup_environment`
-before deploying pipelines. That job creates catalogs, schemas, and Volumes,
-then grants `ALL_PRIVILEGES` on those four catalogs to
-`catalog_full_access_principal`. The same grant is applied in `dev` when its
-setup job is run manually. The setup identity needs `CREATE_CATALOG` on the
-metastore and permission to grant access on the catalogs it creates:
-`sp-dab-dev` for `dev`/`test`, and `sp-dab-prod` for `prod`. Free Edition does
-not provide Account Console access or account-level APIs, so this workflow uses
-OAuth M2M secrets instead of GitHub OIDC federation policies.
-Then add the repository Actions variable
-`DATABRICKS_DEPLOYMENTS_ENABLED=true` only after verifying each environment's
-secret, host, client ID, and required grants.
+Los flujos de despliegue de `test` y `prod` despliegan y ejecutan
+`setup_environment` antes de desplegar las canalizaciones. Esa tarea crea
+catálogos,
+esquemas y volúmenes, y luego concede `ALL_PRIVILEGES` en esos cuatro catálogos
+a `catalog_full_access_principal`. El mismo permiso se concede en `dev` cuando
+se ejecuta manualmente su tarea de configuración. La identidad de configuración
+necesita `CREATE_CATALOG` en el metastore y permiso para conceder acceso a los
+catálogos que crea: `sp-dab-dev` para `dev` y `test`, y `sp-dab-prod` para
+`prod`. La edición gratuita (Free Edition) no ofrece acceso a la consola de cuenta
+(Account Console) ni a las API de cuenta,
+por lo que este flujo usa secretos OAuth M2M en lugar de políticas de
+federación OIDC de GitHub. Agrega la variable de Actions del repositorio
+`DATABRICKS_DEPLOYMENTS_ENABLED=true` solo después de verificar el secreto, el
+host, el ID de cliente y los permisos requeridos de cada entorno.
 
-To deploy `dev` manually in Databricks, sync the desired branch in the
-workspace Git folder, open its root `databricks.yml`, select the Deployments
-icon, choose the `dev` target, and deploy. The bundle UI executes the deployment
-as your current Databricks user, so that user needs the required workspace and
-Unity Catalog permissions. Then run the bundle's `setup_environment` job from
-the bundle resources or Workflows → Jobs to initialize catalogs and grants. Job
-and pipeline names include the selected target (`dev`, `test`, or `prod`). The
-`dev` target remains in `databricks.yml`, but does not require a GitHub
-Environment.
+Para desplegar `dev` manualmente en Databricks, sincroniza la rama deseada en la
+carpeta Git del espacio de trabajo, abre el archivo raíz `databricks.yml`,
+selecciona el icono Deployments (Despliegues), elige el destino `dev` y
+despliega. La interfaz del bundle realiza el despliegue con tu usuario actual de
+Databricks, que necesita los permisos requeridos del espacio de trabajo y de
+Unity Catalog. Luego ejecuta la tarea `setup_environment` desde los recursos
+del bundle o desde Workflows → Jobs (Flujos de trabajo → Tareas) para inicializar
+los catálogos y permisos. Los nombres de tareas y canalizaciones incluyen
+el destino seleccionado (`dev`, `test` o `prod`). El destino `dev` permanece en
+`databricks.yml`, pero no requiere un entorno de GitHub.
 
-### Test setup without a workspace connection
+### Probar la configuración sin conexión al espacio de trabajo
 
-The setup tests use mocked notebook widgets and Spark SQL, with no remote
-compute or third-party dependencies:
+Las pruebas de configuración simulan los widgets del cuaderno y Spark SQL; no
+requieren cómputo remoto ni dependencias de terceros:
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_setup_environment.py' -v
 ```
 
-## Expense ingestion
+## Ingesta de gastos
 
-Upload a representative cumulative expense export with a unique `.json` filename
-to the development Volume above, then selectively deploy and run:
+Carga en el volumen de desarrollo indicado una exportación acumulativa
+representativa con un nombre de archivo `.json` único; luego despliega de forma
+selectiva y ejecuta:
 
 ```bash
 databricks bundle deploy -t dev --select jobs.expense_refresh,pipelines.penny_lake_silver
 databricks bundle run expense_refresh -t dev
 ```
 
-See the [pipeline documentation](src/penny_lake_etl/README.md) for the JSON contract,
-bronze output tables, data-quality checks, and cumulative-export semantics.
-The old sample notebook and package examples remain locally but are not run by
-the expense refresh job.
+Consulta la [documentación de la canalización](src/penny_lake_etl/README.md) para ver
+el contrato JSON, las tablas de salida Bronze, las verificaciones de calidad
+de datos y el comportamiento de las exportaciones acumulativas. El cuaderno de
+ejemplo anterior y los ejemplos del paquete siguen en el repositorio, pero el
+la tarea de actualización de gastos no los ejecuta.
 
-The mocked pipeline tests require no remote compute:
+Las pruebas simuladas de la canalización no requieren cómputo remoto:
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_bronze_ingest.py' -v
 ```
 
-These tests verify configuration and transformation wiring, not actual Spark
-execution. The bronze tables retain the complete export, including empty arrays,
-and flattened expense rows; both include `source_file_path`. Check
-`bronze_expense_exports` grouped by `source_file_path` to show each input file
-was ingested once.
+Estas pruebas verifican la configuración y la conexión de las transformaciones,
+no la ejecución real de Spark. Las tablas Bronze conservan la exportación
+completa, incluidas las matrices vacías, además de las filas de gastos
+aplanadas; ambas contienen `source_file_path`. Agrupa
+`bronze_expense_exports` por `source_file_path` para mostrar que cada archivo
+de entrada se ingirió una sola vez.
 
-The refresh job now runs Bronze followed by Silver. The
-[metrics notebook](src/silver_metrics.py) has a before/after metrics cell pair.
-Silver keeps the latest accepted version seen for each `expense_id`; query all
-rows in `silver_expenses` for the SCD Type 1 current state. IDs absent from later
-exports remain because Bronze raw is append-only. Read the
-[Silver current-state documentation](src/penny_lake_etl/README.md#silver-current-state)
-before uploading additional exports.
+La tarea de actualización ejecuta Bronze y luego Silver. El
+[cuaderno de métricas](src/silver_metrics.py) contiene celdas de métricas antes
+y después. Silver conserva la última versión aceptada de cada `expense_id`;
+consulta todas las filas de `silver_expenses` para ver el estado actual de SCD
+Type 1. Los identificadores ausentes en exportaciones posteriores permanecen
+porque la tabla Bronze sin procesar solo admite anexados. Lee la
+[documentación del estado actual de Silver](src/penny_lake_etl/README.md#silver-current-state)
+antes de cargar exportaciones adicionales.
 
-Run the bronze and silver mocked tests without remote compute:
+Ejecuta las pruebas simuladas de Bronze y Silver sin cómputo remoto:
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_*pipeline.py' -v
 ```
 
-## C5: Observability and optimization
+## C5: Observabilidad y optimización
 
-The target-independent system-table query in
+La consulta independiente del destino a las tablas del sistema en
 [05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql)
-finds expense-refresh runs for deployed bundle targets by joining
-`system.lakeflow.jobs` to `system.lakeflow.job_run_timeline`. System-table
-records can take up to an hour to appear.
+busca las ejecuciones de actualización de gastos de los destinos desplegados
+del bundle, uniendo `system.lakeflow.jobs` con
+`system.lakeflow.job_run_timeline`. Los registros de las tablas del sistema
+pueden tardar hasta una hora en aparecer.
 
-Liquid clustering is declared on the SDP-managed `silver_expenses` streaming
-table in
+El clustering líquido está declarado en la tabla de flujo continuo `silver_expenses`,
+administrada por SDP, en
 [src/penny_lake_etl/transformations/silver_expenses.sql](src/penny_lake_etl/transformations/silver_expenses.sql),
-using `expense_date` and `spending_area`. The same table definition sets
-`pipelines.autoOptimize.managed = true`, allowing the owning pipeline to manage
-optimization. The C5 SQL file includes parameterized `DESCRIBE DETAIL` and
-`DESCRIBE HISTORY` statements for each target.
+con `expense_date` y `spending_area`. La misma definición establece
+`pipelines.autoOptimize.managed = true`, para que la canalización propietaria
+administre la optimización. El archivo SQL de C5 incluye instrucciones
+parametrizadas `DESCRIBE DETAIL` y `DESCRIBE HISTORY` para cada destino.
 
-The largest table measured across the whole test project was actually Bronze
-`bronze_expense_exports` (52,731 bytes), which is written by the separate Bronze
-ingestion Job rather than an SDP. Per your choice to keep optimization
-declarative in the existing pipeline, this change clusters `silver_expenses`
-instead; it does not claim that Silver was the largest table across the entire
-project. Moving Bronze ingestion into an SDP would be needed to apply the same
-declaration to that Bronze table.
+La tabla más grande medida en todo el proyecto de test fue en realidad la tabla
+Bronze `bronze_expense_exports` (52.731 bytes), escrita por la tarea de ingesta
+Bronze independiente y no por un SDP. Como se eligió mantener la optimización
+declarativa en la canalización existente, este cambio aplica clustering a
+`silver_expenses`; no afirma que Silver sea la tabla más grande del proyecto.
+Para aplicar la misma declaración a la tabla Bronze, habría que trasladar la
+ingesta Bronze a un SDP.
 
-In test, the pre-optimization `DESCRIBE DETAIL` measured
-`bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for
-`bronze_expenses_raw` and 35,218 bytes for `silver_expenses`. After clustering
-and optimization, `DESCRIBE DETAIL` reported `clusteringColumns = ["exportedAt"]`,
-one file, and 30,528 bytes. `DESCRIBE HISTORY` recorded `CLUSTER BY` at version 5
-and `OPTIMIZE FULL` at version 6; the subsequent `OPTIMIZE` compacted three files
-into one. The Lakeflow query returned the test refresh run
-`546572501279640` with `SUCCEEDED`. The dataset is small, so this demonstrates
-the previous Bronze test operation and its evidence rather than a meaningful
-performance improvement. Production Silver evidence is documented below.
+En test, antes de la optimización, `DESCRIBE DETAIL` midió
+`bronze_expense_exports` en 52.731 bytes, frente a 51.043 bytes para
+`bronze_expenses_raw` y 35.218 bytes para `silver_expenses`. Después del
+clustering y la optimización, `DESCRIBE DETAIL` informó
+`clusteringColumns = ["exportedAt"]`, un archivo y 30.528 bytes.
+`DESCRIBE HISTORY` registró `CLUSTER BY` en la versión 5 y `OPTIMIZE FULL` en la
+versión 6; el `OPTIMIZE` posterior compactó tres archivos en uno. La consulta
+Lakeflow devolvió la ejecución de actualización de test `546572501279640` con
+estado `SUCCEEDED`. El conjunto de datos es pequeño, así que esto demuestra la
+operación Bronze anterior y su evidencia, no una mejora significativa de
+rendimiento. La evidencia de Silver en producción se documenta a continuación.
 
-@@
-In Prod, `DESCRIBE DETAIL` reported 47,926 bytes for
-`bronze_expense_exports`, 46,734 bytes for `bronze_expenses_raw`, and 33,164
-bytes for `silver_expenses`. The Silver table is therefore not the largest of
-the measured tables. Its production history records `CLUSTER BY` at version 2
-and a later `MERGE`, but no explicit `OPTIMIZE` operation. This evidence records
-the implemented pipeline-managed Silver optimization and does not claim that it
-meets the rubric's literal request to cluster and optimize the largest table.
+### Evidencia en producción
+
+En producción, `DESCRIBE DETAIL` informó 47.926 bytes para
+`bronze_expense_exports`, 46.734 bytes para `bronze_expenses_raw` y 33.164
+bytes para `silver_expenses`. Por lo tanto, Silver no es la mayor de las tablas
+medidas. El historial de producción registra `CLUSTER BY` en la versión 2 y un
+`MERGE` posterior, pero no una operación explícita `OPTIMIZE`. Esta evidencia
+documenta la optimización de Silver administrada por la canalización y no afirma
+que cumpla literalmente con el requisito de aplicar clustering y optimizar la
+tabla más grande.
