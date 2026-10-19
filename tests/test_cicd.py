@@ -10,6 +10,7 @@ class CicdConfigurationTests(unittest.TestCase):
         cls.bundle = (PROJECT_ROOT / "databricks.yml").read_text()
         cls.ci = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
         cls.deploy = (PROJECT_ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+        cls.observability = (PROJECT_ROOT / "05_observabilidad" / "C5_evidencia.sql").read_text()
 
     def test_bundle_has_separate_test_catalogs_and_service_principal_root(self):
         for catalog in (
@@ -33,21 +34,75 @@ class CicdConfigurationTests(unittest.TestCase):
         self.assertIn("pull_request:\n    branches: [test, main]", self.ci)
         self.assertIn("push:\n    branches: [test, main]", self.ci)
 
-    def test_deploy_flow_uses_feature_test_and_merged_test_to_main(self):
-        self.assertIn('"feature/**"', self.deploy)
+    def test_deploy_flow_uses_test_and_merged_test_to_main_only(self):
+        self.assertNotIn('"feature/**"', self.deploy)
+        self.assertNotIn("deploy-dev:", self.deploy)
         self.assertIn("github.ref == 'refs/heads/test'", self.deploy)
         self.assertIn("github.event.pull_request.head.ref == 'test'", self.deploy)
         self.assertIn("github.event.pull_request.base.ref == 'main'", self.deploy)
         self.assertIn("github.event.pull_request.merged == true", self.deploy)
         self.assertIn("github.event_name == 'pull_request'", self.deploy)
+        self.assertEqual(self.deploy.count("environment: "), 2)
 
-    def test_deployments_require_oidc_and_explicit_ready_flag(self):
-        self.assertEqual(self.deploy.count("DATABRICKS_AUTH_TYPE: github-oidc"), 3)
+    def test_deployments_use_oauth_m2m_and_explicit_ready_flag(self):
+        self.assertEqual(self.deploy.count("DATABRICKS_AUTH_TYPE: oauth-m2m"), 2)
+        self.assertEqual(
+            self.deploy.count("DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}"),
+            2,
+        )
         self.assertEqual(
             self.deploy.count("vars.DATABRICKS_DEPLOYMENTS_ENABLED == 'true'"),
+            2,
+        )
+        self.assertNotIn("id-token: write", self.deploy)
+
+    def test_test_deployment_bootstraps_catalogs_before_pipelines(self):
+        test_job = self.deploy.split("deploy-test:", 1)[1].split("deploy-prod:", 1)[0]
+        bootstrap_job = "databricks bundle deploy -t test --select jobs.setup_environment"
+        run_setup = "databricks bundle run setup_environment -t test"
+        full_deploy = "databricks bundle deploy -t test\n"
+        self.assertLess(test_job.index(bootstrap_job), test_job.index(run_setup))
+        self.assertLess(test_job.index(run_setup), test_job.index(full_deploy))
+
+    def test_setup_and_reader_governance_permissions_are_environment_scoped(self):
+        test_job = self.deploy.split("deploy-test:", 1)[1].split("deploy-prod:", 1)[0]
+        self.assertNotIn("databricks grants update catalog", test_job)
+        self.assertIn("catalog_full_access_principal:", self.bundle)
+        self.assertEqual(
+            self.bundle.count("gold_reader_principal: alkztro@hotmail.com"),
             3,
         )
-        self.assertEqual(self.deploy.count("id-token: write"), 1)
+        prod_job = self.deploy.split("deploy-prod:", 1)[1]
+        setup_job = "databricks bundle deploy -t prod --select jobs.setup_environment"
+        run_setup = "databricks bundle run setup_environment -t prod"
+        full_deploy = "databricks bundle deploy -t prod\n"
+        self.assertLess(prod_job.index(setup_job), prod_job.index(run_setup))
+        self.assertLess(prod_job.index(run_setup), prod_job.index(full_deploy))
+
+    def test_databricks_resource_names_include_the_bundle_target(self):
+        for path, name in (
+            ("resources/setup_environment.job.yml", "penny_lake_setup_environment"),
+            ("resources/expense_refresh.job.yml", "penny_lake_expense_refresh"),
+            ("resources/penny_lake_silver.pipeline.yml", "penny_lake_silver"),
+            ("resources/penny_lake_gold.pipeline.yml", "penny_lake_gold"),
+        ):
+            with self.subTest(resource=path):
+                content = (PROJECT_ROOT / path).read_text()
+                self.assertIn(f"name: ${{bundle.target}}_{name}", content)
+
+    def test_observability_query_finds_runs_for_all_bundle_targets(self):
+        self.assertIn("FROM system.lakeflow.jobs", self.observability)
+        self.assertIn("FROM system.lakeflow.job_run_timeline", self.observability)
+        self.assertIn("jobs.name RLIKE '(dev|test|prod)_penny_lake_expense_refresh$'", self.observability)
+        self.assertNotIn("311134548631586", self.observability)
+        self.assertNotIn("test_penny_lake_01_bronze", self.observability)
+
+    def test_clustering_evidence_uses_a_target_table_parameter(self):
+        self.assertIn("EXECUTE IMMEDIATE CONCAT('DESCRIBE DETAIL ', :silver_table)", self.observability)
+        self.assertIn(
+            "EXECUTE IMMEDIATE CONCAT('DESCRIBE HISTORY ', :silver_table, ' LIMIT 10')",
+            self.observability,
+        )
 
 
 if __name__ == "__main__":

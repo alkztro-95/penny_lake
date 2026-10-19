@@ -71,7 +71,9 @@ with this project. It's also possible to interact with it directly using the CLI
 
 [databricks.yml](databricks.yml) supplies environment-specific catalog names to
 the [setup job](resources/setup_environment.job.yml). Its
-[notebook](src/setup_environment.py) creates the following objects:
+[notebook](src/setup_environment.py) creates the following objects and grants
+`ALL_PRIVILEGES` on each environment's four catalogs to
+`catalog_full_access_principal` (default `alfredo.castro@ulatina.net`):
 
 | Object | Development | Test | Production |
 | --- | --- | --- | --- |
@@ -90,6 +92,17 @@ The existing `catalog` variable is the bronze catalog. The
 directory explicitly stored in the `autoloader_state` Volume, plus a separate
 checkpoint directory in that Volume. Run `setup_environment` to create the state
 Volume before the ingestion job.
+
+### Optional O5: batched streaming ingestion
+
+The Bronze path already covers O5 without a synthetic file-writer notebook:
+the `expense_refresh` job waits for files in the landing Volume, then
+`bronze_ingest.py` reads them with Auto Loader (`cloudFiles`) in streaming mode
+and uses `availableNow=True` to process the available batch and terminate. A
+later file arrival starts the next batch, which is compatible with serverless
+compute. The behavior is asserted in
+[`tests/test_bronze_ingest.py`](tests/test_bronze_ingest.py).
+
 Silver builds distinct AI-classified categories, then streams
 `bronze_expenses_raw` into `_int_expenses_expectations` to normalize fields,
 drop rows that fail the declared expectations, and calculate estimated CRC
@@ -113,17 +126,18 @@ bad row appears.
 
 The `expense_refresh` job publishes a Delta reader table after Gold refresh.
 Its `total_amount_crc` column uses a Unity Catalog column mask backed by
-`governance.gold_amount_access_map`; the configured reader
-(`alkztro@hotmail.com` in development) receives `NULL` for that column. The
+`${governance_catalog}.governance.gold_amount_access_map`; the configured
+reader (`alkztro@hotmail.com` in dev, test, and prod) receives `NULL` for that column. The
 unmasked materialized view remains ungranted to that reader. The reader also
 gets no Bronze, Silver, or mapping-table access. Access defaults to masked
 unless a principal is explicitly allowed by the mapping table. Sensitive
 monetary columns are tagged with `sensitivity = sensitive` and
 `domain = financial`.
 
-The current bundle configuration is intended to be deployed to development
-first. Do not deploy production governance or grant production access without
-explicit approval.
+The `apply_governance` task applies these reader grants after Gold refresh. In
+test and prod, the protected reader table and its grants are created when
+`expense_refresh` successfully processes data; deploying the bundle alone does
+not run that job.
 
 ### Requirements
 
@@ -187,47 +201,52 @@ The intended promotion flow is:
 
 | GitHub event | Bundle target |
 | --- | --- |
-| Push to `feature/*` | `dev` |
+| Manual deployment from the Databricks workspace Git folder | `dev` |
 | Merge a pull request into `test` | `test` |
 | Merge a pull request from `test` into `main` | `prod` |
 
 The [CI workflow](.github/workflows/ci.yml) runs workspace-independent unit
 tests on pull requests to `test` and `main`. The
-[deployment workflow](.github/workflows/deploy.yml) uses Databricks GitHub OIDC
-authentication and deploys only on the events above. It additionally requires
-the repository Actions variable `DATABRICKS_DEPLOYMENTS_ENABLED` to equal
-`true`; it is intentionally not enabled until OIDC policies and service
-principal permissions are configured and verified.
+[deployment workflow](.github/workflows/deploy.yml) uses Databricks OAuth
+machine-to-machine (M2M) authentication and deploys only to `test` and `prod`.
+It requires the repository Actions variable
+`DATABRICKS_DEPLOYMENTS_ENABLED` to equal `true`; keep it disabled until the
+GitHub environment credentials and service principal permissions are configured
+and verified.
 
-Configure GitHub Actions Environments named `dev`, `test`, and `prod`. In each
+Configure GitHub Actions Environments named `test` and `prod`. In each
 environment set `DATABRICKS_HOST` to the workspace URL and `DATABRICKS_CLIENT_ID`
-to the matching Databricks application ID:
+to the matching Databricks application ID. Add an environment secret named
+`DATABRICKS_CLIENT_SECRET` containing that service principal's OAuth secret.
+Never add the secret to the repository, workflow files, or chat.
 
 | Environment | Service principal | Application ID |
 | --- | --- | --- |
-| `dev` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `test` | `sp-dab-dev` | `cb2f526a-1a03-47da-a4f6-30729febe372` |
 | `prod` | `sp-dab-prod` | `76668225-6dad-4f36-bc24-e9b41f811953` |
 
-Create a Databricks service principal federation policy for each GitHub
-environment. Use issuer `https://token.actions.githubusercontent.com`, audience
-equal to the Databricks account ID (or its default), and the environment
-subject. Since this repository was created after GitHub's immutable subject
-format took effect, the expected subjects are:
+The `test` and `prod` deployment workflows deploy and run `setup_environment`
+before deploying pipelines. That job creates catalogs, schemas, and Volumes,
+then grants `ALL_PRIVILEGES` on those four catalogs to
+`catalog_full_access_principal`. The same grant is applied in `dev` when its
+setup job is run manually. The setup identity needs `CREATE_CATALOG` on the
+metastore and permission to grant access on the catalogs it creates:
+`sp-dab-dev` for `dev`/`test`, and `sp-dab-prod` for `prod`. Free Edition does
+not provide Account Console access or account-level APIs, so this workflow uses
+OAuth M2M secrets instead of GitHub OIDC federation policies.
+Then add the repository Actions variable
+`DATABRICKS_DEPLOYMENTS_ENABLED=true` only after verifying each environment's
+secret, host, client ID, and required grants.
 
-```text
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:dev
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:test
-repo:alkztro-95@318067197/penny_lake@1424850622:environment:prod
-```
-
-The dev principal must have the workspace and Unity Catalog privileges to
-deploy to the dev and test catalogs; the prod principal needs the corresponding
-privileges for production. Bootstrap each environment's catalogs, schemas, and
-Volumes with its `setup_environment` job before pipeline deployment. Do not set
-`DATABRICKS_DEPLOYMENTS_ENABLED=true` until those prerequisites and all three
-federation policies are verified. No Databricks client secret or personal
-access token is stored in GitHub.
+To deploy `dev` manually in Databricks, sync the desired branch in the
+workspace Git folder, open its root `databricks.yml`, select the Deployments
+icon, choose the `dev` target, and deploy. The bundle UI executes the deployment
+as your current Databricks user, so that user needs the required workspace and
+Unity Catalog permissions. Then run the bundle's `setup_environment` job from
+the bundle resources or Workflows → Jobs to initialize catalogs and grants. Job
+and pipeline names include the selected target (`dev`, `test`, or `prod`). The
+`dev` target remains in `databricks.yml`, but does not require a GitHub
+Environment.
 
 ### Test setup without a workspace connection
 
@@ -278,3 +297,51 @@ Run the bronze and silver mocked tests without remote compute:
 ```bash
 python3 -m unittest discover -s tests -p 'test_*pipeline.py' -v
 ```
+
+## C5: Observability and optimization
+
+The target-independent system-table query in
+[05_observabilidad/C5_evidencia.sql](05_observabilidad/C5_evidencia.sql)
+finds expense-refresh runs for deployed bundle targets by joining
+`system.lakeflow.jobs` to `system.lakeflow.job_run_timeline`. System-table
+records can take up to an hour to appear.
+
+Liquid clustering is declared directly on the SDP-managed `silver_expenses`
+streaming table in
+[src/penny_lake_etl/transformations/silver_expenses.sql](src/penny_lake_etl/transformations/silver_expenses.sql),
+using `expense_date` and `spending_area`. The same table definition enables
+`pipelines.autoOptimize.managed`, so the owning pipeline schedules its table
+optimization rather than relying on a separate manual `OPTIMIZE` command. The
+pipeline writes this table to the catalog selected by the bundle target, so
+the declaration applies in test and prod. The C5 SQL file includes parameterized
+`DESCRIBE DETAIL` and `DESCRIBE HISTORY` evidence; set `silver_table` to the
+selected target's fully-qualified Silver table.
+
+The largest table measured across the whole test project was actually Bronze
+`bronze_expense_exports` (52,731 bytes), which is written by the separate Bronze
+ingestion Job rather than an SDP. Per your choice to keep optimization
+declarative in the existing pipeline, this change clusters `silver_expenses`
+instead; it does not claim that Silver was the largest table across the entire
+project. Moving Bronze ingestion into an SDP would be needed to apply the same
+declaration to that Bronze table.
+
+In test, the pre-optimization `DESCRIBE DETAIL` measured
+`bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for
+`bronze_expenses_raw` and 35,218 bytes for `silver_expenses`. After clustering
+and optimization, `DESCRIBE DETAIL` reported `clusteringColumns = ["exportedAt"]`,
+one file, and 30,528 bytes. `DESCRIBE HISTORY` recorded `CLUSTER BY` at version 5
+and `OPTIMIZE FULL` at version 6; the subsequent `OPTIMIZE` compacted three files
+into one. The Lakeflow query returned the test refresh run
+`546572501279640` with `SUCCEEDED`. The dataset is small, so this demonstrates
+the previous Bronze test operation and its evidence rather than a meaningful
+performance improvement. Production evidence for the declarative Silver
+clustering must be collected after the Prod SDP update.
+
+In the test workspace, the pre-optimization `DESCRIBE DETAIL` measured
+`bronze_expense_exports` at 52,731 bytes, compared with 51,043 bytes for
+`bronze_expenses_raw` and 35,218 bytes for `silver_expenses`. After clustering
+and optimization, `DESCRIBE DETAIL` reported `clusteringColumns = ["exportedAt"]`,
+one file, and 30,528 bytes. `DESCRIBE HISTORY` recorded `CLUSTER BY` at version 5
+and `OPTIMIZE FULL` at version 6; the subsequent `OPTIMIZE` compacted three files
+into one. The Lakeflow query returned the test refresh run
+`546572501279640` with `SUCCEEDED`.

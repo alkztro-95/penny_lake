@@ -1,7 +1,7 @@
 resources:
   jobs:
     expense_refresh:
-      name: penny_lake_expense_refresh
+      name: ${bundle.target}_penny_lake_expense_refresh
       max_concurrent_runs: 1
       trigger:
         pause_status: UNPAUSED

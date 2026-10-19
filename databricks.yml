@@ -24,6 +24,9 @@ variables:
     description: Catalog for access mappings and governance functions
   gold_reader_principal:
     description: Workspace principal that can read Gold without seeing monetary amounts
+  catalog_full_access_principal:
+    description: Principal that receives full access to each environment's catalogs
+    default: alfredo.castro@ulatina.net
   schema:
     description: The schema to create in each medallion catalog
   landing_schema:
