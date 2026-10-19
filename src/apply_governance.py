@@ -27,6 +27,14 @@ reader = dbutils.widgets.get("gold_reader_principal")
 if not re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", reader):
     raise ValueError("gold_reader_principal must be a valid email principal.")
 
+dbutils.widgets.text("catalog_full_access_principal", "")
+full_access_principal = dbutils.widgets.get("catalog_full_access_principal")
+if not re.fullmatch(
+    r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+    full_access_principal,
+):
+    raise ValueError("catalog_full_access_principal must be a valid email principal.")
+
 bronze_catalog = parameters["bronze_catalog"]
 silver_catalog = parameters["silver_catalog"]
 gold_catalog = parameters["gold_catalog"]
@@ -46,18 +54,22 @@ spark.sql(f"CREATE TABLE IF NOT EXISTS {mapping_table} ("
           "principal STRING NOT NULL, "
           "can_view_amount BOOLEAN NOT NULL"
           ") USING DELTA")
-spark.sql(
-    f"""
-    MERGE INTO {mapping_table} AS target
-    USING (
-      SELECT LOWER('{reader}') AS principal, FALSE AS can_view_amount
-    ) AS source
-    ON LOWER(target.principal) = source.principal
-    WHEN MATCHED THEN UPDATE SET can_view_amount = source.can_view_amount
-    WHEN NOT MATCHED THEN INSERT (principal, can_view_amount)
-      VALUES (source.principal, source.can_view_amount)
-    """
-)
+for principal, can_view_amount in (
+    (reader, "FALSE"),
+    (full_access_principal, "TRUE"),
+):
+    spark.sql(
+        f"""
+        MERGE INTO {mapping_table} AS target
+        USING (
+          SELECT LOWER('{principal}') AS principal, {can_view_amount} AS can_view_amount
+        ) AS source
+        ON LOWER(target.principal) = source.principal
+        WHEN MATCHED THEN UPDATE SET can_view_amount = source.can_view_amount
+        WHEN NOT MATCHED THEN INSERT (principal, can_view_amount)
+          VALUES (source.principal, source.can_view_amount)
+        """
+    )
 spark.sql(
     f"""
     CREATE OR REPLACE FUNCTION {mask_function}(amount DECIMAL(38, 4))

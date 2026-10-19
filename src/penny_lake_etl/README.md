@@ -183,11 +183,15 @@ The mask function lives in
 `${governance_catalog}.governance.gold_amount_access_map`. The configured
 reader principal (`alkztro@hotmail.com`) is mapped to `can_view_amount = false`,
 so the masked amount is `NULL`; the function returns amounts only for
-principals explicitly mapped with `can_view_amount = true`. Only the reader
-table is granted to the reader, along with `USE CATALOG` and `USE SCHEMA` on
-Gold. No access is granted to the source Gold materialized view, Silver,
-Bronze, or the mapping table. The task tags sensitive amounts in Bronze,
-Silver, Gold, and the protected reader table.
+principals explicitly mapped with `can_view_amount = true`. The
+`catalog_full_access_principal` (`alfredo.castro@ulatina.net` by default) is
+mapped to `true`, so that principal can read unmasked amounts from the protected
+reader table. Only the reader table is granted to the reader, along with
+`USE CATALOG` and `USE SCHEMA` on Gold. The reader receives no access to the
+source Gold materialized view, Silver, Bronze, or the mapping table. The full
+access principal already receives `ALL_PRIVILEGES` on the environment catalogs.
+The task tags sensitive amounts in Bronze, Silver, Gold, and the protected
+reader table.
 
 The task completed successfully in development as part of
 [job run 204698341133513](https://dbc-7c7fae20-e5c4.cloud.databricks.com/?o=7474656472211339#job/816547114899556/run/204698341133513).
@@ -208,12 +212,12 @@ SHOW GRANTS ON TABLE ${gold_catalog}.${schema}.gold_monthly_spending;
 | `dev_penny_lake_03_gold.expenses.gold_monthly_spending` | *(no rows)* | *(no grant)* |
 
 Effective grants were also empty for this principal on the Bronze raw table,
-Silver schema, and governance mapping table. The mapping row is
-`alkztro@hotmail.com | false`. The column mask was exercised as the workspace
-owner: the protected table returned 93 groups with 0 non-null amounts, while
-the unmasked Gold object returned 93 groups with 93 non-null amounts. The
-reader-principal mapping plus its effective grants were verified, but the
-reader's own interactive session was not impersonated.
+Silver schema, and governance mapping table. The mapping rows are `alkztro@hotmail.com | false` and
+`alfredo.castro@ulatina.net | true`. The column mask was exercised as the
+workspace owner: the protected table returned 93 groups with 0 non-null amounts
+for the reader, while the unmasked Gold object returned 93 groups with 93
+non-null amounts. The reader-principal mapping plus its effective grants were
+verified, but the reader's own interactive session was not impersonated.
 Column-tag metadata was verified in `information_schema.column_tags` for the
 Bronze raw amount, the three Silver amount columns, and both Gold amount
 columns (including the protected reader table).
